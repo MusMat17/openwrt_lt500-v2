@@ -1,4 +1,4 @@
-# Cudy LT500 v2 (R25) — OpenWrt 23.05.5 test port
+# Cudy LT500v2 (R25) — OpenWrt 23.05.5
 
 This branch is intentionally based on OpenWrt commit:
 
@@ -7,9 +7,9 @@ This branch is intentionally based on OpenWrt commit:
 which matches the OpenWrt 23.05.5 revision currently installed by Cudy's
 official intermediary firmware (`r24106-10cc5fcd00`).
 
-## v.2.0-rc1 All-in-One
+## v2.0-zapret-rc1 All-in-One
 
-The `v2.0-rc1` branch adds the bypass stack directly to the firmware while
+The `v2.0-zapret-rc1` branch adds the bypass stack directly to the firmware while
 keeping the proven OpenWrt 23.05.5 / Linux 5.15.167 LT500 hardware base.
 
 Included in the image:
@@ -82,7 +82,7 @@ CI refuses to publish the artifact unless:
 
 ## Important change vs draft upstream PR
 
-The draft upstream PR assumes QMI/ModemManager for LTE. The actual LT500 v2
+The draft upstream PR assumes QMI/ModemManager for LTE. The actual LT500v2
 tested here contains a Quectel EC200A whose stock Cudy configuration is
 CDC-ECM:
 
@@ -99,7 +99,7 @@ This image deliberately blocks the normal `opkg upgrade` command.
 
 A full package upgrade is unsafe on this custom firmware because the public
 OpenWrt 23.05.5 repositories contain packages built for the official target
-and kernel ABI. Mixing them with this custom LT500 v2 image can break kernel
+and kernel ABI. Mixing them with this custom LT500v2 image can break kernel
 modules or make the router unbootable.
 
 Normal package-management operations remain available:
@@ -120,7 +120,7 @@ binary directly as `/bin/opkg.real`.
 
 ## LTE validation history
 
-The LT500 v2 port has been validated on real hardware, including a full cold-power boot. The Quectel EC200A restores its saved LTE/ECM session itself, so no board-specific AT startup daemon is required. `chat` remains available for diagnostics.
+The LT500v2 port has been validated on real hardware, including a full cold-power boot. The Quectel EC200A restores its saved LTE/ECM session itself, so no board-specific AT startup daemon is required. `chat` remains available for diagnostics.
 
 After flashing and confirming that `usb0` exists, use the following only
 for a controlled LTE test (replace APN as required):
