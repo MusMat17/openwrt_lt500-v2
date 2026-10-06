@@ -154,7 +154,12 @@ define Device/cudy_lt500-v2
   DEVICE_VARIANT := v2
   DEVICE_PACKAGES := kmod-usb2 kmod-usb-ohci kmod-usb-net-cdc-ether \
 	kmod-usb-serial-option chat \
-	kmod-mt7615e kmod-mt7663-firmware-ap
+	kmod-mt7615e kmod-mt7663-firmware-ap \
+	curl unzip ca-bundle ip-full conntrack \
+	kmod-nft-queue kmod-nft-nat kmod-nft-offload \
+	zapret \
+	kmod-amneziawg amneziawg-tools luci-proto-amneziawg \
+	steer-core zapret-manager-lt500
   UIMAGE_NAME := R25
   SUPPORTED_DEVICES += R25
 endef
