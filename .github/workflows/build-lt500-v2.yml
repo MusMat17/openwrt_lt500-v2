@@ -15,7 +15,11 @@ on:
       - '.github/workflows/build-lt500-v2.yml'
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: lt500-v2-rc1
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -153,6 +157,67 @@ jobs:
           echo "===== target files ====="
           ls -lh "$DIR"
 
+      - name: Prepare public RC1 release assets
+        run: |
+          DIR="bin/targets/ramips/mt76x8"
+          SRC="$DIR/openwrt-ramips-mt76x8-cudy_lt500-v2-squashfs-sysupgrade.bin"
+          DST="$DIR/Cudy-LT500-v2-R25-OpenWrt-23.05.5-RC1-sysupgrade.bin"
+          cp "$SRC" "$DST"
+          sha256sum "$DST" > "$DIR/Cudy-LT500-v2-R25-OpenWrt-23.05.5-RC1-SHA256.txt"
+
+      - name: Publish Cudy LT500 v2 (R25) OpenWrt 23.05.5 RC1
+        if: github.ref == 'refs/heads/v2.0-rc1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          DIR="bin/targets/ramips/mt76x8"
+          TAG="v.2.0-rc1"
+          TITLE="Cudy LT500 v2 (R25) OpenWrt 23.05.5 RC1"
+
+          cat > /tmp/release-notes.md <<'EOF'
+          # Cudy LT500 v2 (R25) — OpenWrt 23.05.5 RC1
+
+          First public release candidate of the LT500 v2 / R25 OpenWrt port.
+
+          **Hardware target:** Cudy LT500 v2 (R25) only.
+          **Base:** OpenWrt 23.05.5 / ramips/mt76x8.
+          **LTE:** Quectel EC200A, CDC-ECM (usb0), AT control on /dev/ttyUSB1.
+
+          ## Included
+          - LTE support for the EC200A via CDC-ECM
+          - LuCI
+          - curl and unzip
+          - opkg upgrade safety guard
+          - Zapret 72.20260307 built from source for this firmware
+          - Zapret Manager 2.48
+          - Steer Core 2.0.3
+          - AmneziaWG kernel module/tools/LuCI built for this exact kernel ABI
+          - WARP/AWG support through Zapret Manager + Steer
+
+          ## Important
+          This is RC1 for an unsupported device port. Use only on Cudy LT500 v2 / R25.
+
+          Installation path:
+          Cudy stock firmware → official Cudy intermediary OpenWrt firmware → this sysupgrade image.
+
+          Before flashing, run:
+          sysupgrade -T /tmp/Cudy-LT500-v2-R25-OpenWrt-23.05.5-RC1-sysupgrade.bin
+
+          Do not force-install foreign kmod-* packages. Zapret and AmneziaWG in this build are firmware-owned and should be updated only with a matching LT500 firmware release.
+
+          TFTP recovery remains recommended before experimenting.
+          EOF
+
+          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title "$TITLE" \
+            --notes-file /tmp/release-notes.md \
+            --prerelease \
+            "$DIR/Cudy-LT500-v2-R25-OpenWrt-23.05.5-RC1-sysupgrade.bin" \
+            "$DIR/Cudy-LT500-v2-R25-OpenWrt-23.05.5-RC1-SHA256.txt" \
+            "$DIR/openwrt-ramips-mt76x8-cudy_lt500-v2.manifest" \
+            "$DIR/profiles.json"
       - name: Upload LT500 v2.0-rc1 firmware
         uses: actions/upload-artifact@v4
         with:
