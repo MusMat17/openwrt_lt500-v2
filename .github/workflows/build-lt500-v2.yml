@@ -52,13 +52,13 @@ jobs:
           test -n "$IPK"
           ls -lh "$IPK"
 
-          mkdir -p /tmp/steer-ipk "$GITHUB_WORKSPACE/package/steer-core/files"
-          cd /tmp/steer-ipk
-          ar x "$IPK"
-
-          DATA="$(find . -maxdepth 1 -type f -name 'data.tar.*' -print -quit)"
-          test -n "$DATA"
-          tar -xf "$DATA" -C "$GITHUB_WORKSPACE/package/steer-core/files"
+          # build.sh leaves the exact package payload in build/pkg/mipsel_24kc.
+          # Copy that tree directly instead of assuming a particular .ipk container format.
+          PAYLOAD="$PWD/build/pkg/mipsel_24kc"
+          test -d "$PAYLOAD/usr"
+          rm -rf "$GITHUB_WORKSPACE/package/steer-core/files"
+          mkdir -p "$GITHUB_WORKSPACE/package/steer-core/files"
+          cp -a "$PAYLOAD"/. "$GITHUB_WORKSPACE/package/steer-core/files"/
 
           test -x "$GITHUB_WORKSPACE/package/steer-core/files/usr/sbin/steer"
           test -x "$GITHUB_WORKSPACE/package/steer-core/files/usr/sbin/steerd"
