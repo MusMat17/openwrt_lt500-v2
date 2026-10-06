@@ -7,6 +7,8 @@ on:
       - lt500-v2-23.05.5
     paths:
       - 'target/linux/ramips/**'
+      - 'package/system/opkg/**'
+      - 'LT500-V2-PORT.md'
       - '.github/workflows/build-lt500-v2.yml'
 
 permissions:
