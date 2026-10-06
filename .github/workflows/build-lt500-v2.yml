@@ -1,10 +1,10 @@
-name: Build LT500 v2.0-rc1 All-in-One
+name: Build LT500 v2.0-zapret-rc1 All-in-One
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - v2.0-rc1
+      - v2.0-zapret-rc1
     paths:
       - 'target/linux/ramips/**'
       - 'package/system/opkg/**'
@@ -18,7 +18,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: lt500-v2-rc1
+  group: lt500-v2-zapret-rc1
   cancel-in-progress: true
 
 jobs:
@@ -73,7 +73,7 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Configure LT500 v2.0-rc1
+      - name: Configure LT500 v2.0-zapret-rc1
         run: |
           cat > .config <<'EOF'
           CONFIG_TARGET_ramips=y
@@ -161,25 +161,25 @@ jobs:
         run: |
           DIR="bin/targets/ramips/mt76x8"
           SRC="$DIR/openwrt-ramips-mt76x8-cudy_lt500-v2-squashfs-sysupgrade.bin"
-          DST="$DIR/Cudy-LT500-v2-R25-OpenWrt-23.05.5-RC1-sysupgrade.bin"
+          DST="$DIR/Cudy-LT500v2-OpenWrt-23.05.5-v2.0-zapret-rc1-sysupgrade.bin"
           cp "$SRC" "$DST"
-          sha256sum "$DST" > "$DIR/Cudy-LT500-v2-R25-OpenWrt-23.05.5-RC1-SHA256.txt"
+          sha256sum "$DST" > "$DIR/Cudy-LT500v2-OpenWrt-23.05.5-v2.0-zapret-rc1-SHA256.txt"
 
-      - name: Publish Cudy LT500 v2 (R25) OpenWrt 23.05.5 RC1
-        if: github.ref == 'refs/heads/v2.0-rc1'
+      - name: Publish Cudy LT500v2 — OpenWrt 23.05.5 — v2.0-zapret-rc1
+        if: github.ref == 'refs/heads/v2.0-zapret-rc1'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           DIR="bin/targets/ramips/mt76x8"
-          TAG="v.2.0-rc1"
-          TITLE="Cudy LT500 v2 (R25) OpenWrt 23.05.5 RC1"
+          TAG="v2.0-zapret-rc1"
+          TITLE="Cudy LT500v2 — OpenWrt 23.05.5 — v2.0-zapret-rc1"
 
           cat > /tmp/release-notes.md <<'EOF'
-          # Cudy LT500 v2 (R25) — OpenWrt 23.05.5 RC1
+          # Cudy LT500v2 — OpenWrt 23.05.5 — v2.0-zapret-rc1
 
-          First public release candidate of the LT500 v2 / R25 OpenWrt port.
+          First public release candidate of the LT500v2 / R25 OpenWrt port.
 
-          **Hardware target:** Cudy LT500 v2 (R25) only.
+          **Hardware target:** Cudy LT500v2 (R25) only.
           **Base:** OpenWrt 23.05.5 / ramips/mt76x8.
           **LTE:** Quectel EC200A, CDC-ECM (usb0), AT control on /dev/ttyUSB1.
 
@@ -195,13 +195,13 @@ jobs:
           - WARP/AWG support through Zapret Manager + Steer
 
           ## Important
-          This is RC1 for an unsupported device port. Use only on Cudy LT500 v2 / R25.
+          This is RC1 for an unsupported device port. Use only on Cudy LT500v2 / R25.
 
           Installation path:
           Cudy stock firmware → official Cudy intermediary OpenWrt firmware → this sysupgrade image.
 
           Before flashing, run:
-          sysupgrade -T /tmp/Cudy-LT500-v2-R25-OpenWrt-23.05.5-RC1-sysupgrade.bin
+          sysupgrade -T /tmp/Cudy-LT500v2-OpenWrt-23.05.5-v2.0-zapret-rc1-sysupgrade.bin
 
           Do not force-install foreign kmod-* packages. Zapret and AmneziaWG in this build are firmware-owned and should be updated only with a matching LT500 firmware release.
 
@@ -214,14 +214,14 @@ jobs:
             --title "$TITLE" \
             --notes-file /tmp/release-notes.md \
             --prerelease \
-            "$DIR/Cudy-LT500-v2-R25-OpenWrt-23.05.5-RC1-sysupgrade.bin" \
-            "$DIR/Cudy-LT500-v2-R25-OpenWrt-23.05.5-RC1-SHA256.txt" \
+            "$DIR/Cudy-LT500v2-OpenWrt-23.05.5-v2.0-zapret-rc1-sysupgrade.bin" \
+            "$DIR/Cudy-LT500v2-OpenWrt-23.05.5-v2.0-zapret-rc1-SHA256.txt" \
             "$DIR/openwrt-ramips-mt76x8-cudy_lt500-v2.manifest" \
             "$DIR/profiles.json"
-      - name: Upload LT500 v2.0-rc1 firmware
+      - name: Upload LT500 v2.0-zapret-rc1 firmware
         uses: actions/upload-artifact@v4
         with:
-          name: cudy-lt500-v2-v2.0-rc1-all-in-one
+          name: cudy-lt500v2-openwrt-23.05.5-v2.0-zapret-rc1
           if-no-files-found: error
           retention-days: 14
           path: |
