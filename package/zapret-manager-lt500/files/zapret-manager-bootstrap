@@ -1,0 +1,19 @@
+#!/bin/sh /etc/rc.common
+START=99
+
+start() {
+	if [ -x /usr/libexec/rpcd/zapret-manager ]; then
+		/etc/init.d/zapret-manager-bootstrap disable >/dev/null 2>&1
+		return 0
+	fi
+
+	(
+		sleep 15
+		if /usr/libexec/zapret-manager-installer >/tmp/zapret-manager-bootstrap.log 2>&1; then
+			logger -t zapret-manager-bootstrap "Zapret Manager dashboard installed"
+			/etc/init.d/zapret-manager-bootstrap disable >/dev/null 2>&1
+		else
+			logger -t zapret-manager-bootstrap "Zapret Manager dashboard installation failed; see /tmp/zapret-manager-bootstrap.log"
+		fi
+	) &
+}
