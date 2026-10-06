@@ -20,6 +20,7 @@ on:
     branches-ignore:
       - master
       - v2.0-rc1
+      - v2.0-zapret-rc1
       - lt500-v2-23.05.5
 
 permissions:
