@@ -74,8 +74,9 @@
 			gpios = <&gpio 41 GPIO_ACTIVE_LOW>;
 		};
 
-		led-wan {
-			function = LED_FUNCTION_WAN;
+		led-lan4 {
+			function = LED_FUNCTION_LAN;
+			function-enumerator = <4>;
 			color = <LED_COLOR_ID_GREEN>;
 			gpios = <&gpio 39 GPIO_ACTIVE_LOW>;
 		};
