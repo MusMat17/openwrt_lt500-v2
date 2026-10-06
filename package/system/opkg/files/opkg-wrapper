@@ -1,0 +1,27 @@
+#!/bin/sh
+# Safety guard for this LT500 v2 build.
+# A full "opkg upgrade" can mix packages from the official 23.05.5 feeds
+# with this custom target/kernel ABI and may render the router unusable.
+
+for arg in "$@"; do
+	if [ "$arg" = "upgrade" ]; then
+		cat >&2 <<'EOF'
+ERROR: 'opkg upgrade' is disabled on this Cudy LT500 v2 custom build.
+
+Why:
+  This firmware uses a custom ramips/mt76x8 target build and kernel ABI.
+  A mass package upgrade can install packages that are incompatible with
+  the running image, especially kernel modules.
+
+Safe operations remain available:
+  opkg update
+  opkg install <package>
+  opkg remove <package>
+
+Install individual userspace packages only. Do not mass-upgrade the system.
+EOF
+		exit 2
+	fi
+done
+
+exec /bin/opkg.real "$@"
