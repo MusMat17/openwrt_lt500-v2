@@ -1,0 +1,79 @@
+name: Publish LT500v2 v1.0-rc1
+
+on:
+  push:
+    branches:
+      - lt500-v2-23.05.5
+    paths:
+      - '.github/workflows/publish-v1.0-rc1.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Download validated clean-build artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p /tmp/v1
+          gh run download 37537257239             --repo "${{ github.repository }}"             --name cudy-lt500-v2-openwrt-23.05.5             --dir /tmp/v1
+
+          test -s /tmp/v1/openwrt-ramips-mt76x8-cudy_lt500-v2-squashfs-sysupgrade.bin
+
+      - name: Verify validated binary
+        run: |
+          cd /tmp/v1
+          echo "7fceb15799bcc63546a43c76f5598d5d32e90b28e9ca126bcf50392aacbb43f1  openwrt-ramips-mt76x8-cudy_lt500-v2-squashfs-sysupgrade.bin" | sha256sum -c -
+
+          mv openwrt-ramips-mt76x8-cudy_lt500-v2-squashfs-sysupgrade.bin              Cudy-LT500v2-OpenWrt-23.05.5-v1.0-rc1-sysupgrade.bin
+
+          sha256sum Cudy-LT500v2-OpenWrt-23.05.5-v1.0-rc1-sysupgrade.bin             > Cudy-LT500v2-OpenWrt-23.05.5-v1.0-rc1-SHA256.txt
+
+      - name: Publish public prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > /tmp/notes.md <<'EOF'
+          # Cudy LT500v2 — OpenWrt 23.05.5 — v1.0-rc1
+
+          First public release candidate of the clean OpenWrt port for **Cudy LT500v2 / R25**.
+
+          ## Confirmed on real hardware
+          - MediaTek MT7628AN
+          - 128 MiB RAM / 16 MiB SPI NOR
+          - MT7663E 5 GHz radio
+          - Quectel EC200A LTE modem
+          - CDC-ECM via `cdc_ether`
+          - LTE data interface: `usb0`
+          - AT port: `/dev/ttyUSB1`
+          - Cold-power boot tested
+          - DHCP, default route, DNS and LTE Internet tested
+
+          ## Included
+          - LuCI
+          - native EC200A CDC-ECM support
+          - `curl` and `unzip`
+          - `opkg upgrade` safety guard
+
+          ## Important
+          This release is for **Cudy LT500v2 / R25 only**.
+
+          Installation path:
+          **Cudy stock firmware → official Cudy intermediary OpenWrt firmware → this sysupgrade image.**
+
+          Before flashing:
+          `sysupgrade -T /tmp/Cudy-LT500v2-OpenWrt-23.05.5-v1.0-rc1-sysupgrade.bin`
+
+          Do not force-install foreign `kmod-*` packages built for a different kernel ABI.
+
+          This is a release candidate. TFTP recovery is strongly recommended before experimentation.
+          EOF
+
+          gh release delete v1.0-rc1 --repo "${{ github.repository }}" --yes --cleanup-tag 2>/dev/null || true
+
+          gh release create v1.0-rc1             --repo "${{ github.repository }}"             --target 85c640d60a465ce9dd29aab1f4f9e11e015fb744             --title "Cudy LT500v2 — OpenWrt 23.05.5 — v1.0-rc1"             --notes-file /tmp/notes.md             --prerelease             /tmp/v1/Cudy-LT500v2-OpenWrt-23.05.5-v1.0-rc1-sysupgrade.bin             /tmp/v1/Cudy-LT500v2-OpenWrt-23.05.5-v1.0-rc1-SHA256.txt             /tmp/v1/profiles.json             /tmp/v1/sha256sums
