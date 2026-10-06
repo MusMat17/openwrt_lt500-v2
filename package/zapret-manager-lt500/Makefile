@@ -18,7 +18,7 @@ include $(INCLUDE_DIR)/package.mk
 define Package/zapret-manager-lt500
   SECTION:=net
   CATEGORY:=Network
-  TITLE:=Zapret Manager 2.48 dashboard bootstrap for Cudy LT500 v2
+  TITLE:=Zapret Manager 2.48 dashboard bootstrap for Cudy LT500v2
   URL:=https://github.com/StressOzz/Zapret-Manager
   DEPENDS:=+luci +curl +unzip +uhttpd-mod-ubus +rpcd +nftables +ip-full +ca-bundle
 endef
@@ -37,7 +37,7 @@ define Package/zapret-manager-lt500/install
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./files/zapret-manager-bootstrap $(1)/etc/init.d/zapret-manager-bootstrap
 	$(INSTALL_DIR) $(1)/etc
-	printf '%s\n' 'LT500 v2.0-rc1 all-in-one' > $(1)/etc/lt500-allinone
+	printf '%s\n' 'LT500v2 v2.0-zapret-rc1 all-in-one' > $(1)/etc/lt500-allinone
 endef
 
 $(eval $(call BuildPackage,zapret-manager-lt500))
