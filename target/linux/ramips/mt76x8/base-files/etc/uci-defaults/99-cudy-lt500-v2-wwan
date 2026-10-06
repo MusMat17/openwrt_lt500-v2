@@ -1,0 +1,24 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+find_wan_zone() {
+	local section="$1"
+	local name
+
+	config_get name "$section" name
+	[ "$name" = "wan" ] || return
+
+	uci -q del_list firewall."$section".network='wwan'
+	uci add_list firewall."$section".network='wwan'
+	uci commit firewall
+}
+
+[ "$(board_name)" = "cudy,lt500-v2" ] || exit 0
+
+# The target's 02_network creates the wwan interface. Add it once to the
+# standard WAN firewall zone after the default firewall configuration exists.
+config_load firewall
+config_foreach find_wan_zone zone
+
+exit 0
