@@ -1,13 +1,16 @@
-name: Build LT500 v2 OpenWrt 23.05.5
+name: Build LT500 v2.0-rc1 All-in-One
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - lt500-v2-23.05.5
+      - v2.0-rc1
     paths:
       - 'target/linux/ramips/**'
       - 'package/system/opkg/**'
+      - 'package/steer-core/**'
+      - 'package/zapret-manager-lt500/**'
+      - 'feeds.conf.default'
       - 'LT500-V2-PORT.md'
       - '.github/workflows/build-lt500-v2.yml'
 
@@ -17,7 +20,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-22.04
-    timeout-minutes: 180
+    timeout-minutes: 240
 
     steps:
       - name: Checkout
@@ -29,31 +32,80 @@ jobs:
           sudo apt-get install -y \
             build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
             gettext git libncurses-dev libssl-dev python3-setuptools rsync swig \
-            unzip zlib1g-dev file wget libelf-dev python3 python3-distutils \
-            xz-utils zstd ca-certificates
+            unzip zlib1g-dev file wget curl libelf-dev python3 python3-distutils \
+            xz-utils zstd ca-certificates binutils
+
+      - name: Build pinned Steer 2.0.3 for mipsel_24kc
+        run: |
+          rm -rf /tmp/steer /tmp/steer-ipk
+          git clone https://github.com/splify2/steer.git /tmp/steer
+          git -C /tmp/steer checkout 81a78be4c26f1a8369a92813fbfbf13f225382ab
+
+          cd /tmp/steer
+          STEER_ARCH=mipsel_24kc ./build.sh
+
+          IPK="$(find "$PWD/out" -maxdepth 1 -type f -name 'steer-core-2.0.3-1_mipsel_24kc.ipk' -print -quit)"
+          test -n "$IPK"
+          ls -lh "$IPK"
+
+          mkdir -p /tmp/steer-ipk "$GITHUB_WORKSPACE/package/steer-core/files"
+          cd /tmp/steer-ipk
+          ar x "$IPK"
+
+          DATA="$(find . -maxdepth 1 -type f -name 'data.tar.*' -print -quit)"
+          test -n "$DATA"
+          tar -xf "$DATA" -C "$GITHUB_WORKSPACE/package/steer-core/files"
+
+          test -x "$GITHUB_WORKSPACE/package/steer-core/files/usr/sbin/steer"
+          test -x "$GITHUB_WORKSPACE/package/steer-core/files/usr/sbin/steerd"
+          test -x "$GITHUB_WORKSPACE/package/steer-core/files/etc/init.d/steer"
+
+          echo "===== Steer payload ====="
+          du -sh "$GITHUB_WORKSPACE/package/steer-core/files"
+          find "$GITHUB_WORKSPACE/package/steer-core/files" -type f -maxdepth 5 | sort
 
       - name: Update and install feeds
         run: |
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Configure LT500 v2
+      - name: Configure LT500 v2.0-rc1
         run: |
           cat > .config <<'EOF'
           CONFIG_TARGET_ramips=y
           CONFIG_TARGET_ramips_mt76x8=y
           CONFIG_TARGET_ramips_mt76x8_DEVICE_cudy_lt500-v2=y
           CONFIG_PACKAGE_luci=y
+          CONFIG_PACKAGE_curl=y
+          CONFIG_PACKAGE_unzip=y
+          CONFIG_PACKAGE_zapret=y
+          CONFIG_PACKAGE_kmod-amneziawg=y
+          CONFIG_PACKAGE_amneziawg-tools=y
+          CONFIG_PACKAGE_luci-proto-amneziawg=y
+          CONFIG_PACKAGE_steer-core=y
+          CONFIG_PACKAGE_zapret-manager-lt500=y
           CONFIG_VERSION_NUMBER="23.05.5"
           CONFIG_VERSION_REPO="https://downloads.openwrt.org/releases/23.05.5"
           EOF
 
           make defconfig
 
-          echo "===== selected target ====="
-          grep -E '^CONFIG_TARGET_ramips|^CONFIG_PACKAGE_luci=' .config
+          echo "===== selected target/packages ====="
+          grep -E '^CONFIG_TARGET_ramips|^CONFIG_PACKAGE_(curl|unzip|zapret|kmod-amneziawg|amneziawg-tools|luci-proto-amneziawg|steer-core|zapret-manager-lt500)=' .config
 
-          grep -q '^CONFIG_TARGET_ramips_mt76x8_DEVICE_cudy_lt500-v2=y' .config
+          for sym in \
+            CONFIG_TARGET_ramips_mt76x8_DEVICE_cudy_lt500-v2 \
+            CONFIG_PACKAGE_curl \
+            CONFIG_PACKAGE_unzip \
+            CONFIG_PACKAGE_zapret \
+            CONFIG_PACKAGE_kmod-amneziawg \
+            CONFIG_PACKAGE_amneziawg-tools \
+            CONFIG_PACKAGE_luci-proto-amneziawg \
+            CONFIG_PACKAGE_steer-core \
+            CONFIG_PACKAGE_zapret-manager-lt500
+          do
+            grep -q "^$sym=y" .config || { echo "Missing $sym"; exit 1; }
+          done
 
       - name: Download sources
         run: make download -j8
@@ -62,23 +114,53 @@ jobs:
         run: |
           make -j"$(nproc)" V=s || make -j1 V=s
 
-      - name: Verify output
+      - name: Verify all-in-one image
         run: |
-          IMAGE="bin/targets/ramips/mt76x8/openwrt-ramips-mt76x8-cudy_lt500-v2-squashfs-sysupgrade.bin"
+          DIR="bin/targets/ramips/mt76x8"
+          IMAGE="$DIR/openwrt-ramips-mt76x8-cudy_lt500-v2-squashfs-sysupgrade.bin"
+          MANIFEST="$DIR/openwrt-ramips-mt76x8-cudy_lt500-v2.manifest"
+
           test -s "$IMAGE"
+          test -s "$MANIFEST"
+
+          echo "===== image ====="
           ls -lh "$IMAGE"
           sha256sum "$IMAGE"
 
-          echo "===== target files ====="
-          ls -lh bin/targets/ramips/mt76x8/
+          SIZE="$(stat -c%s "$IMAGE")"
+          MAX="$((15872 * 1024))"
+          echo "image_bytes=$SIZE max_bytes=$MAX"
+          [ "$SIZE" -le "$MAX" ] || { echo "Image exceeds LT500 firmware partition"; exit 1; }
 
-      - name: Upload LT500 v2 firmware
+          echo "===== required packages ====="
+          for p in \
+            curl unzip zapret \
+            kmod-nft-queue kmod-nft-nat kmod-nft-offload \
+            kmod-amneziawg amneziawg-tools luci-proto-amneziawg \
+            steer-core zapret-manager-lt500
+          do
+            grep -q "^$p " "$MANIFEST" || { echo "Package missing from image: $p"; exit 1; }
+            grep "^$p " "$MANIFEST"
+          done
+
+          ROOT="$(find build_dir -maxdepth 3 -type d -name root-ramips -print -quit)"
+          test -n "$ROOT"
+          test -x "$ROOT/usr/sbin/steer"
+          test -x "$ROOT/usr/bin/awg"
+          test -x "$ROOT/opt/zapret/nfq/nfqws"
+          test -x "$ROOT/usr/libexec/zapret-manager-installer"
+
+          echo "===== target files ====="
+          ls -lh "$DIR"
+
+      - name: Upload LT500 v2.0-rc1 firmware
         uses: actions/upload-artifact@v4
         with:
-          name: cudy-lt500-v2-openwrt-23.05.5
+          name: cudy-lt500-v2-v2.0-rc1-all-in-one
           if-no-files-found: error
           retention-days: 14
           path: |
             bin/targets/ramips/mt76x8/openwrt-ramips-mt76x8-cudy_lt500-v2-squashfs-sysupgrade.bin
+            bin/targets/ramips/mt76x8/openwrt-ramips-mt76x8-cudy_lt500-v2.manifest
             bin/targets/ramips/mt76x8/profiles.json
             bin/targets/ramips/mt76x8/sha256sums
