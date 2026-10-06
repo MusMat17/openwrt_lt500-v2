@@ -40,11 +40,4 @@ define Package/zapret-manager-lt500/install
 	printf '%s\n' 'LT500 v2.0-rc1 all-in-one' > $(1)/etc/lt500-allinone
 endef
 
-define Package/zapret-manager-lt500/postinst
-#!/bin/sh
-[ -n "$${IPKG_INSTROOT}" ] && exit 0
-/etc/init.d/zapret-manager-bootstrap enable >/dev/null 2>&1 || true
-exit 0
-endef
-
 $(eval $(call BuildPackage,zapret-manager-lt500))
