@@ -1,0 +1,11 @@
+--- a/ZapretManager_LuCI.sh
++++ b/ZapretManager_LuCI.sh
+@@ -80,7 +80,7 @@
+ 
+ CONF="/etc/config/zapret"
+ ZM_VERSION="2.48"
+-ZM_SCRIPT_URL="https://raw.githubusercontent.com/StressOzz/Zapret-Manager/refs/heads/main/ZapretManager_LuCI.sh"
++ZM_SCRIPT_URL="https://raw.githubusercontent.com/StressOzz/Zapret-Manager/d528728e0351b9fc2ae72997dfcd9d2c74425b6b/ZapretManager_LuCI.sh"
+ GH_RAW="https://raw.githubusercontent.com"
+ GH_MAIN="https://github.com"
+ MT_URL_ITDOG="${GH_RAW}/StressOzz/Zapret-Manager/refs/heads/main/files/MagiTrickle/configAD.yaml"
