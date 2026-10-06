@@ -1,0 +1,93 @@
+name: Publish LT500v2 v1.0-rc1
+
+on:
+  workflow_run:
+    workflows:
+      - "Build LT500 v2 OpenWrt 23.05.5"
+    types:
+      - completed
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  release:
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'lt500-v2-23.05.5' &&
+      github.event.workflow_run.head_sha == '85c640d60a465ce9dd29aab1f4f9e11e015fb744'
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Download validated firmware artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          mkdir -p /tmp/lt500v2-release
+          cd /tmp/lt500v2-release
+          gh run download "$RUN_ID"             --repo "${{ github.repository }}"             --name cudy-lt500-v2-openwrt-23.05.5
+
+          BIN="$(find . -type f -name 'openwrt-ramips-mt76x8-cudy_lt500-v2-squashfs-sysupgrade.bin' -print -quit)"
+          test -s "$BIN"
+
+          cp "$BIN" Cudy-LT500v2-OpenWrt-23.05.5-v1.0-rc1-sysupgrade.bin
+          sha256sum Cudy-LT500v2-OpenWrt-23.05.5-v1.0-rc1-sysupgrade.bin             > Cudy-LT500v2-OpenWrt-23.05.5-v1.0-rc1-SHA256.txt
+
+          cp "$(find . -type f -name profiles.json -print -quit)" profiles.json
+          cp "$(find . -type f -name sha256sums -print -quit)" openwrt-sha256sums
+
+      - name: Publish public prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
+        working-directory: /tmp/lt500v2-release
+        run: |
+          TAG="v1.0-rc1"
+          TITLE="Cudy LT500v2 — OpenWrt 23.05.5 — v1.0-rc1"
+
+          cat > release-notes.md <<'EOF'
+          # Cudy LT500v2 — OpenWrt 23.05.5 — v1.0-rc1
+
+          First public release candidate of the base OpenWrt port for **Cudy LT500v2 / R25**.
+
+          ## Confirmed on real hardware
+
+          - MediaTek MT7628AN
+          - 128 MiB RAM
+          - 16 MiB SPI NOR
+          - 2.4 GHz MT7628
+          - 5 GHz MT7663E
+          - Quectel EC200A LTE modem
+          - LTE data over CDC-ECM / `usb0`
+          - AT control on `/dev/ttyUSB1`
+          - LTE cold boot tested successfully
+          - DHCP, default route, DNS and Internet over LTE tested successfully
+
+          ## Safety
+
+          - `opkg upgrade` is deliberately blocked.
+          - `opkg update`, individual userspace package installation and removal remain available.
+          - Do not force-install foreign `kmod-*` packages; kernel modules must match this firmware's exact kernel ABI.
+
+          ## Installation
+
+          **Only for Cudy LT500v2 / R25.**
+
+          Recommended path:
+
+          Cudy stock firmware → official Cudy intermediary OpenWrt firmware → this sysupgrade image.
+
+          Before flashing:
+
+              sysupgrade -T /tmp/Cudy-LT500v2-OpenWrt-23.05.5-v1.0-rc1-sysupgrade.bin
+
+          Proceed only if the compatibility test succeeds.
+
+          This is an RC release for an unofficial device port. Keep TFTP recovery available.
+          EOF
+
+          gh release delete "$TAG" --repo "${{ github.repository }}" --yes --cleanup-tag 2>/dev/null || true
+
+          gh release create "$TAG"             --repo "${{ github.repository }}"             --target "$TARGET_SHA"             --title "$TITLE"             --notes-file release-notes.md             --prerelease             Cudy-LT500v2-OpenWrt-23.05.5-v1.0-rc1-sysupgrade.bin             Cudy-LT500v2-OpenWrt-23.05.5-v1.0-rc1-SHA256.txt             profiles.json             openwrt-sha256sums
