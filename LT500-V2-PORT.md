@@ -44,6 +44,31 @@ CDC-ECM:
 
 This branch therefore uses CDC-ECM instead of QMI.
 
+## Package-manager safety guard
+
+This image deliberately blocks the normal `opkg upgrade` command.
+
+A full package upgrade is unsafe on this custom firmware because the public
+OpenWrt 23.05.5 repositories contain packages built for the official target
+and kernel ABI. Mixing them with this custom LT500 v2 image can break kernel
+modules or make the router unbootable.
+
+Normal package-management operations remain available:
+
+```sh
+opkg update
+opkg install <package>
+opkg remove <package>
+```
+
+Install individual **userspace** packages only. Do not install `kmod-*`
+packages from the official OpenWrt feeds unless they were built for the exact
+kernel ABI used by this image.
+
+The guard is intended to prevent accidental damage; it is not a security
+boundary. A root user can still deliberately bypass it by invoking the real
+binary directly as `/bin/opkg.real`.
+
 ## First test image
 
 The first image intentionally does **not** automate modem AT initialization.
