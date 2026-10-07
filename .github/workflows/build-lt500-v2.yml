@@ -9,6 +9,7 @@ on:
       - 'target/linux/ramips/**'
       - 'package/system/opkg/**'
       - 'package/kernel/linux/modules/crypto.mk'
+      - 'package/kernel/linux/modules/netsupport.mk'
       - 'package/steer-core/**'
       - 'package/zapret-manager-lt500/**'
       - 'feeds.conf.default'
@@ -133,13 +134,31 @@ jobs:
           test -n "$KDIR"
           echo "kernel_dir=$KDIR"
 
-          echo "===== kernel UDP tunnel config ====="
-          grep '^CONFIG_NET_UDP_TUNNEL=' "$KDIR/.config" || {
-            echo "CONFIG_NET_UDP_TUNNEL is missing"
-            exit 1
-          }
+          echo "===== resolved kernel UDP tunnel prerequisites ====="
+          # NET_UDP_TUNNEL selects NET_IP_TUNNEL, which selects DST_CACHE
+          # and GRO_CELLS. IPv6 UDP uses CONFIG_IPV6; IPV6_TUNNEL is a
+          # separate IP-in-IPv6 driver and is not required by AmneziaWG.
+          for setting in \
+            CONFIG_NET_UDP_TUNNEL=m \
+            CONFIG_NET_IP_TUNNEL=m \
+            CONFIG_DST_CACHE=y \
+            CONFIG_GRO_CELLS=y \
+            CONFIG_IPV6=y
+          do
+            grep -Fx "$setting" "$KDIR/.config" || {
+              echo "Missing kernel prerequisite: $setting"
+              echo "===== requested target and package settings ====="
+              grep -E 'CONFIG_(NET_UDP_TUNNEL|NET_IP_TUNNEL|DST_CACHE|GRO_CELLS|IPV6)(=| )' \
+                "$KDIR/.config.target" "$KDIR/.config.override" "$KDIR/.config.set" || true
+              exit 1
+            }
+          done
 
           echo "===== UDP tunnel modules ====="
+          test -s "$KDIR/net/ipv4/ip_tunnel.ko" || {
+            echo "Missing IP tunnel dependency ip_tunnel.ko"
+            exit 1
+          }
           test -s "$KDIR/net/ipv4/udp_tunnel.ko" || {
             echo "Missing IPv4 udp_tunnel.ko"
             exit 1
@@ -148,7 +167,7 @@ jobs:
             echo "Missing IPv6 ip6_udp_tunnel.ko"
             exit 1
           }
-          ls -lh "$KDIR/net/ipv4/udp_tunnel.ko" "$KDIR/net/ipv6/ip6_udp_tunnel.ko"
+          ls -lh "$KDIR/net/ipv4/ip_tunnel.ko" "$KDIR/net/ipv4/udp_tunnel.ko" "$KDIR/net/ipv6/ip6_udp_tunnel.ko"
 
           echo "===== symbols required by amneziawg.ko ====="
           for sym in \
@@ -157,7 +176,13 @@ jobs:
             udp_sock_create4 \
             udp_sock_create6 \
             setup_udp_tunnel_sock \
-            udp_tunnel_sock_release
+            udp_tunnel_sock_release \
+            dst_cache_init \
+            dst_cache_destroy \
+            dst_cache_get_ip4 \
+            dst_cache_get_ip6 \
+            dst_cache_set_ip4 \
+            dst_cache_set_ip6
           do
             grep -qE "[[:space:]]${sym}[[:space:]]" "$KDIR/Module.symvers" || {
               echo "Missing kernel symbol: $sym"
@@ -192,6 +217,7 @@ jobs:
           for p in \
             curl unzip zapret \
             kmod-nft-queue kmod-nft-nat kmod-nft-offload \
+            kmod-iptunnel kmod-udptunnel4 kmod-udptunnel6 \
             kmod-amneziawg amneziawg-tools luci-proto-amneziawg \
             steer-core zapret-manager-lt500
           do

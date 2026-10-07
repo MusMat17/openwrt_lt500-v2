@@ -62,6 +62,7 @@ $(eval $(call KernelPackage,bonding))
 define KernelPackage/udptunnel4
   SUBMENU:=$(NETWORK_SUPPORT_MENU)
   TITLE:=IPv4 UDP tunneling support
+  DEPENDS:=+kmod-iptunnel
   KCONFIG:=CONFIG_NET_UDP_TUNNEL
   HIDDEN:=1
   FILES:=$(LINUX_DIR)/net/ipv4/udp_tunnel.ko
@@ -74,7 +75,7 @@ $(eval $(call KernelPackage,udptunnel4))
 define KernelPackage/udptunnel6
   SUBMENU:=$(NETWORK_SUPPORT_MENU)
   TITLE:=IPv6 UDP tunneling support
-  DEPENDS:=@IPV6
+  DEPENDS:=@IPV6 +kmod-udptunnel4
   KCONFIG:=CONFIG_NET_UDP_TUNNEL
   HIDDEN:=1
   FILES:=$(LINUX_DIR)/net/ipv6/ip6_udp_tunnel.ko
