@@ -42,6 +42,13 @@ Scheduled after the successful manual-module test on 2026-10-07:
 - Extend CI manifest/rootfs checks to cover TUN and all six Steer modules,
   their runtime libraries and the existing firmware-partition size limit.
 - Keep the already committed OpenWrt 23.05.5 version/runtime-feed correction.
+- Provide independent updates of the LT500-adapted Zapret Manager panel:
+  pin and validate each upstream revision, reapply the LT500 component guards,
+  back up the installed panel and preserve user configuration, and provide a
+  rollback. A panel-only update must not replace kernel modules or firmware-owned
+  Zapret. Features requiring newer components need an explicit compatibility
+  check. Also migrate the existing panel after a config-preserving sysupgrade:
+  the original bootstrap skips installation whenever the RPCD plugin exists.
 - Replace the legacy AmneziaWG driver/tools with a matched pair supporting
   I1-I5. Carry those UCI fields through the netifd helper, support S3/S4 and
   string/range H1-H4 fields, and include a hardware I1 roundtrip check in
@@ -81,10 +88,14 @@ the module compiled for this exact kernel ABI.
 Update these components by installing a newer LT500 firmware release, not by
 installing foreign kernel packages.
 
-The Zapret Manager dashboard itself is pinned to version 2.48 for this release
-so a dashboard self-update cannot silently remove these LT500-specific safety
-guards. Lists, strategies, WARP keys and normal runtime configuration remain
-updatable.
+The Zapret Manager dashboard itself is pinned to version 2.48 for this release.
+The build now explicitly rejects the original panel self-update action on LT500
+so that a downloaded unpatched installer cannot remove the component guards.
+The initially flashed RC1 only pinned the download URL; even a reinstall of
+the same upstream version could remove the LT500 patches. Do not use its
+original panel self-update action. Independent LT500-adapted panel updates are
+scheduled above. Lists, strategies, WARP keys and normal runtime configuration
+remain updatable.
 
 ### Build validation
 
