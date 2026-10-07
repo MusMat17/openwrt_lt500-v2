@@ -8,6 +8,7 @@ on:
     paths:
       - 'target/linux/ramips/**'
       - 'package/system/opkg/**'
+      - 'package/kernel/linux/modules/crypto.mk'
       - 'package/steer-core/**'
       - 'package/zapret-manager-lt500/**'
       - 'feeds.conf.default'
