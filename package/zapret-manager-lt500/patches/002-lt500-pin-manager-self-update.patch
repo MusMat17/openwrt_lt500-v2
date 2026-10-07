@@ -9,7 +9,18 @@
  GH_RAW="https://raw.githubusercontent.com"
  GH_MAIN="https://github.com"
  MT_URL_ITDOG="${GH_RAW}/StressOzz/Zapret-Manager/refs/heads/main/files/MagiTrickle/configAD.yaml"
-@@ -32130,8 +32130,8 @@
+@@ -4692,6 +4692,10 @@
+ 
+ zm_update_action() {
+ 	local tmp="/tmp/zm_update_install.sh" why v j
++	if [ -f /etc/lt500-allinone ]; then
++		echo '{"error":"LT500v2: самообновление оригинальной панелью отключено; установите совместимый пакет панели с правками LT500"}'
++		return 1
++	fi
+ 	if j="$(_zm_busy_job)"; then
+ 		printf '{"error":"%s"}\n' "$(esc "идёт операция «$j» — дождитесь её окончания и обновите панель")"
+ 		return 1
+@@ -32130,8 +32134,8 @@
  ZMW_IP="$(/opt/zapret-manager-luci/backend.sh lan_ip 2>/dev/null || true)"
  [ -n "$ZMW_IP" ] || ZMW_IP="192.168.1.1"
  
