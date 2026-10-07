@@ -129,7 +129,7 @@ jobs:
           make toolchain/install -j"$(nproc)" V=s || make toolchain/install -j1 V=s
           make target/linux/compile -j"$(nproc)" V=s || make target/linux/compile -j1 V=s
 
-          KDIR="$(find build_dir/target-mipsel_24kc_musl/linux-ramips_mt76x8 -maxdepth 1 -type d -name 'linux-*' -print -quit)"
+          KDIR="$(find build_dir/target-mipsel_24kc_musl/linux-ramips_mt76x8 -mindepth 1 -maxdepth 1 -type d -name 'linux-[0-9]*' -print -quit)"
           test -n "$KDIR"
           echo "kernel_dir=$KDIR"
 
