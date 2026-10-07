@@ -511,9 +511,13 @@ define KernelPackage/crypto-lib-chacha20/aarch64
   FILES+=$(LINUX_DIR)/arch/arm64/crypto/chacha-neon.ko
 endef
 
+# LT500v2/MT7628 (mipsel_24kc) workaround:
+# Keep the generic ChaCha library. With the 23.05.5 kernel config used by
+# this target, chacha-mips.ko is not produced although CONFIG_CPU_MIPS32_R2=y.
+# The generic libchacha.ko is built and is sufficient for WireGuard/AmneziaWG.
 define KernelPackage/crypto-lib-chacha20/mips32r2
-  KCONFIG+=CONFIG_CRYPTO_CHACHA_MIPS
-  FILES:=$(LINUX_DIR)/arch/mips/crypto/chacha-mips.ko
+  KCONFIG+=# CONFIG_CRYPTO_CHACHA_MIPS is not set
+  FILES:=$(LINUX_DIR)/lib/crypto/libchacha.ko
 endef
 
 ifeq ($(CONFIG_CPU_MIPS32_R2),y)
@@ -604,9 +608,11 @@ define KernelPackage/crypto-lib-poly1305/aarch64
   FILES:=$(LINUX_DIR)/arch/arm64/crypto/poly1305-neon.ko
 endef
 
+# Same LT500v2 workaround for Poly1305: use the generic module that is
+# present in the kernel build instead of expecting poly1305-mips.ko.
 define KernelPackage/crypto-lib-poly1305/mips
-  KCONFIG+=CONFIG_CRYPTO_POLY1305_MIPS
-  FILES:=$(LINUX_DIR)/arch/mips/crypto/poly1305-mips.ko
+  KCONFIG+=# CONFIG_CRYPTO_POLY1305_MIPS is not set
+  FILES:=$(LINUX_DIR)/lib/crypto/libpoly1305.ko
 endef
 
 KernelPackage/crypto-lib-poly1305/mipsel=$(KernelPackage/crypto-lib-poly1305/mips)
