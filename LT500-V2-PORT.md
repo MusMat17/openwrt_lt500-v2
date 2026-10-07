@@ -31,6 +31,32 @@ through those interfaces. The base Steer core is sufficient for WARP/AWG
 interface routing, so optional VLESS/Hysteria/proxy modules are deliberately
 not embedded to conserve the LT500's 16 MiB flash.
 
+### Next All-in-One release plan
+
+Scheduled after the successful manual-module test on 2026-10-07:
+
+- Build and embed `kmod-tun` with the next firmware's own kernel configuration
+  and ABI. Do not carry the standalone RC1 kernel package into a new build.
+- Embed Steer 2.0.3 modules `steer-vless`, `steer-hysteria2`, `steer-proxy`,
+  `steer-xsteer`, `steer-obfs` and `steer-tgws`, with the pinned Steer core.
+- Extend CI manifest/rootfs checks to cover TUN and all six Steer modules,
+  their runtime libraries and the existing firmware-partition size limit.
+- Keep the already committed OpenWrt 23.05.5 version/runtime-feed correction.
+
+Validation on the installed RC1: `kmod-tun` package
+`5.15.167-1.lt500rc1.1` loaded successfully, `/dev/net/tun` was present and
+`steer-vless` 2.0.3-1 installed. The user confirmed the resulting setup works.
+The RC1 kernel package is
+`5.15.167-1-78d6c8e3a2943133b1f113a51ed060f5`.
+
+The standalone package uses a distinct version because opkg can merge local
+and feed candidates with identical name/version/architecture, restoring the
+official kernel dependency (`81d2030506bf6ad3027d9c549b1e93da`). Test package
+resolution with the official feed index as well as an empty index.
+
+This section records the next release scope; it does not start a firmware
+build or indicate that these modules are already embedded in RC1.
+
 ### ABI safety
 
 Zapret and AmneziaWG are firmware-owned components in this build. Zapret
