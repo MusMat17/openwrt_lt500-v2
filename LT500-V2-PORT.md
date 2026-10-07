@@ -42,6 +42,12 @@ Scheduled after the successful manual-module test on 2026-10-07:
 - Extend CI manifest/rootfs checks to cover TUN and all six Steer modules,
   their runtime libraries and the existing firmware-partition size limit.
 - Keep the already committed OpenWrt 23.05.5 version/runtime-feed correction.
+- Replace the legacy AmneziaWG driver/tools with a matched pair supporting
+  I1-I5. Carry those UCI fields through the netifd helper, support S3/S4 and
+  string/range H1-H4 fields, and include a hardware I1 roundtrip check in
+  release acceptance. The RC1 add-on pins kernel source
+  `ae0924ca700520ca34c5bdbcfd05b2f683ea9353` and tools source
+  `61e741780e8465a67a7d7fb6cffe14a8a15d624a`.
 
 Validation on the installed RC1: `kmod-tun` package
 `5.15.167-1.lt500rc1.1` loaded successfully, `/dev/net/tun` was present and
@@ -53,6 +59,14 @@ The standalone package uses a distinct version because opkg can merge local
 and feed candidates with identical name/version/architecture, restoring the
 official kernel dependency (`81d2030506bf6ad3027d9c549b1e93da`). Test package
 resolution with the official feed index as well as an empty index.
+
+WARP diagnosis on RC1: tools `1.0.20240213` reject `i1` as an invalid
+argument; the original driver and netifd helper also lack I1 support.
+WARP registration sometimes succeeds, but this does not establish tunnel
+data connectivity. The standalone I1 fix was compiled against the exact RC1
+ABI, its 176 kernel imports were verified against the actual firmware's
+exports, and upgrade/rollback passed with the RC1 opkg binary. Router runtime
+validation of the new driver and WARP connectivity is still pending.
 
 This section records the next release scope; it does not start a firmware
 build or indicate that these modules are already embedded in RC1.
