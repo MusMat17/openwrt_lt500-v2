@@ -121,8 +121,12 @@ jobs:
       - name: Download sources
         run: make download -j8
 
-      - name: Build kernel and verify AmneziaWG UDP tunnel prerequisites
+      - name: Build toolchain, kernel and verify AmneziaWG UDP tunnel prerequisites
         run: |
+          # target/linux/compile assumes OpenWrt host tools and cross-toolchain
+          # already exist. Build them explicitly before the kernel preflight.
+          make tools/install -j"$(nproc)" V=s || make tools/install -j1 V=s
+          make toolchain/install -j"$(nproc)" V=s || make toolchain/install -j1 V=s
           make target/linux/compile -j"$(nproc)" V=s || make target/linux/compile -j1 V=s
 
           KDIR="$(find build_dir/target-mipsel_24kc_musl/linux-ramips_mt76x8 -maxdepth 1 -type d -name 'linux-*' -print -quit)"
