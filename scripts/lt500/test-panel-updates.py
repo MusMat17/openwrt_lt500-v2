@@ -2,6 +2,7 @@
 """Exercise panel installation, failure rollback, settings retention and retry."""
 import os,pathlib,subprocess,tempfile
 repo=pathlib.Path(__file__).resolve().parents[2]
+import shlex
 source=(repo/'package/zapret-manager-lt500/files/lt500-panel-apply').read_text()
 with tempfile.TemporaryDirectory(prefix='lt500-panel-test-') as d:
     root=pathlib.Path(d)
@@ -15,6 +16,9 @@ with tempfile.TemporaryDirectory(prefix='lt500-panel-test-') as d:
     put('opt/zapret-manager-luci/state/ui.theme','dark\n')
     for svc in ('rpcd','uhttpd'):put('etc/init.d/'+svc,'#!/bin/sh\nexit 0\n',0o755)
     bindir=root/'mockbin';put('mockbin/df','#!/bin/sh\necho "Filesystem 1K-blocks Used Available Use% Mounted on"\necho "test 8000 1000 7000 13% /overlay"\n',0o755)
+    if os.environ.get('LT500_TEST_BUSYBOX'):
+        qemu=os.environ['LT500_TEST_QEMU'];busybox=os.environ['LT500_TEST_BUSYBOX'];sysroot=os.environ['LT500_TEST_SYSROOT']
+        put('mockbin/tar', '#!/bin/sh\nexec '+shlex.quote(qemu)+' -L '+shlex.quote(sysroot)+' '+shlex.quote(busybox)+' tar "$@"\n', 0o755)
     env=dict(os.environ,PATH=str(bindir)+':'+os.environ['PATH'])
     # Redirect all absolute runtime paths into the fixture; archive paths
     # remain root-relative so the same backup/restore code is exercised.
@@ -26,6 +30,9 @@ with tempfile.TemporaryDirectory(prefix='lt500-panel-test-') as d:
     def install(version,broken=False):
         text=f'''#!/bin/sh
 # lt500-panel-update: adapted installer fixture {version}
+mkdir -p '{root}/opt/zapret-manager-luci' '{root}/usr/libexec/rpcd'
+printf '#!/bin/sh\\nexit 0\\n' > '{root}/usr/libexec/rpcd/zapret-manager'
+chmod +x '{root}/usr/libexec/rpcd/zapret-manager'
 printf '#!/bin/sh\\n# lt500-panel-update {version}\\n' > '{root}/opt/zapret-manager-luci/backend.sh'
 mkdir -p '{root}/www/zm'
 echo '{version}' > '{root}/www/zm/app.js'
@@ -37,14 +44,18 @@ echo '{version}' >> '{root}/calls'
         result=subprocess.run(['sh',str(runner),*args],env=env,capture_output=True,text=True)
         assert (result.returncode==0)==ok,(result.stdout,result.stderr)
         return result
+    import shutil
+    shutil.rmtree(root/'opt/zapret-manager-luci')
+    (root/'usr/libexec/rpcd/zapret-manager').unlink()
     install('v1');run();assert (root/'etc/config/network').read_text()=='saved-network\n'
-    assert (root/'opt/zapret-manager-luci/state/ui.theme').read_text()=='dark\n'
+    put('opt/zapret-manager-luci/state/ui.theme','dark\n')
     before=(root/'calls').read_text();run();assert (root/'calls').read_text()==before
     old=(root/'opt/zapret-manager-luci/backend.sh').read_bytes()
     install('broken',True);run(ok=False)
     assert (root/'opt/zapret-manager-luci/backend.sh').read_bytes()==old
     assert (root/'etc/config/network').read_text()=='saved-network\n'
     install('v2');run()
+    assert (root/'opt/zapret-manager-luci/state/ui.theme').read_text()=='dark\n'
     put('etc/config/network','new-current-settings\n')
     run('rollback');assert (root/'opt/zapret-manager-luci/backend.sh').read_bytes()==old
     assert (root/'etc/config/network').read_text()=='new-current-settings\n'

@@ -19,7 +19,7 @@ www/zm
 www/zm-webui.html
 usr/bin/zms
 usr/bin/zmw
-etc/lt500-panel/installed.sha256'
+etc/lt500-panel'
 fail() { echo "$*" >&2; exit 1; }
 [ -f /etc/lt500-allinone ] || fail 'This updater requires the LT500 all-in-one firmware'
 [ "$(cat /tmp/sysinfo/board_name)" = cudy,lt500-v2 ] || fail 'Incorrect hardware target'
