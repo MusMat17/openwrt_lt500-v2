@@ -27,10 +27,16 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/v2.0-zapret-rc2' }}
 
 jobs:
+  lt500-custom-build:
+    if: github.ref == 'refs/heads/v2.0-zapret-rc2'
+    runs-on: ubuntu-22.04
+    steps:
+      - run: echo 'LT500 firmware and its packages are validated by build-lt500-v2.yml'
   build-kernels:
+    if: github.ref != 'refs/heads/v2.0-zapret-rc2'
     name: Build all affected Kernels
     permissions:
       contents: read
