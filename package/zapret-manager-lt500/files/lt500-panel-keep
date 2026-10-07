@@ -1,0 +1,5 @@
+/etc/zm-steer/
+/etc/zm-awg/
+/etc/zm-warp-own.conf
+/etc/steer/
+/opt/zapret-manager-luci/state/

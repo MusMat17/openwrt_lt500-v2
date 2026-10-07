@@ -1,0 +1,4 @@
+#!/bin/sh
+# RC1 disabled its bootstrap after installation. Re-enable it on sysupgrade.
+/etc/init.d/zapret-manager-bootstrap enable
+exit 0

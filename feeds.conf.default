@@ -3,4 +3,3 @@ src-git luci https://git.openwrt.org/project/luci.git;openwrt-23.05
 src-git routing https://git.openwrt.org/feed/routing.git;openwrt-23.05
 src-git telephony https://git.openwrt.org/feed/telephony.git;openwrt-23.05
 src-git zapret https://github.com/remittor/zapret-openwrt.git^1b04a87558ec7965bfed0ef7fb557997872dd699
-src-git amneziawg https://github.com/amnezia-vpn/amneziawg-openwrt.git^56bf9fed93df48d2b747edd6e7a7c5fbe2b01afe

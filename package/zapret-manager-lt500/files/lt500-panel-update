@@ -1,0 +1,49 @@
+#!/bin/sh
+# This channel contains reviewed LT500 panel packages, never upstream scripts.
+set -eu
+umask 077
+BASE=https://github.com/MusMat17/openwrt_lt500-v2/releases/download/lt500-panel-stable
+CURRENT="$(opkg list-installed zapret-manager-lt500 | awk '{print $3}')"
+WORK="$(mktemp -d /tmp/lt500-panel-update.XXXXXX)"
+trap 'rm -rf "$WORK"' EXIT
+error() { echo '{"error":"Не удалось получить совместимое обновление панели LT500; см. /tmp/lt500-panel-update.log"}'; exit 1; }
+fetch() {
+	curl -fsSL --connect-timeout 8 --max-time 90 "$1" -o "$2" && return 0
+	# Try an already established WARP tunnel if the direct route is blocked.
+	for iface in zmwarp zmwarp2 zmwarp3; do
+		[ -d "/sys/class/net/$iface" ] || continue
+		curl -fsSL --interface "$iface" --connect-timeout 8 --max-time 90 "$1" -o "$2" && return 0
+	done
+	return 1
+}
+if ! fetch "$BASE/lt500-panel.json" "$WORK/manifest.json" 2>/tmp/lt500-panel-update.log; then
+	if [ "${1:-status}" = status ]; then
+		printf '{"current":"%s","latest":"","newer":false}\n' "$CURRENT"
+		exit 0
+	fi
+	error
+fi
+j() { jsonfilter -i "$WORK/manifest.json" -e "@.$1"; }
+VERSION="$(j version)"
+FILE="$(j file)"
+SHA="$(j sha256)"
+[ "$(j format)" = 1 ] && [ "$(j board)" = cudy,lt500-v2 ] && [ "$(j capability)" = awg2-i1-tun-steer203 ] || error
+printf '%s\n' "$VERSION" | grep -qE '^[0-9]+(\.[0-9]+)*-[0-9]+$' || error
+[ "$FILE" = "zapret-manager-lt500_${VERSION}_mipsel_24kc.ipk" ] || error
+printf '%s\n' "$SHA" | grep -qE '^[0-9a-f]{64}$' || error
+NEWER=false
+opkg compare-versions "$CURRENT" '<' "$VERSION" && NEWER=true
+if [ "${1:-status}" = status ]; then
+	printf '{"current":"%s","latest":"%s","newer":%s}\n' "$CURRENT" "$VERSION" "$NEWER"
+	exit 0
+fi
+[ "${1:-status}" = update ] || error
+[ "$(cat /tmp/sysinfo/board_name)" = cudy,lt500-v2 ] && grep -qx awg2-i1-tun-steer203 /etc/lt500-capabilities || error
+[ "$NEWER" = true ] || { echo '{"error":"Совместимая панель уже установлена"}'; exit 1; }
+fetch "$BASE/$FILE" "$WORK/$FILE" 2>>/tmp/lt500-panel-update.log || error
+[ "$(sha256sum "$WORK/$FILE" | awk '{print $1}')" = "$SHA" ] || error
+# postinst applies the panel with a backup; no forced dependency overrides.
+# Detach from rpcd before restarting it; the worker takes ownership of WORK.
+trap - EXIT
+( sleep 3; opkg install "$WORK/$FILE" >>/tmp/lt500-panel-update.log 2>&1; rm -rf "$WORK" ) >/dev/null 2>&1 </dev/null &
+printf '{"ok":true,"version":"%s"}\n' "$VERSION"

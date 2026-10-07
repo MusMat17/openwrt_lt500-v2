@@ -2,18 +2,14 @@
 START=99
 
 start() {
-	if [ -x /usr/libexec/rpcd/zapret-manager ]; then
-		/etc/init.d/zapret-manager-bootstrap disable >/dev/null 2>&1
-		return 0
-	fi
-
+	# Keep enabled: the installer checksum detects a newer panel package or a
+	# preserved RC1 dashboard after sysupgrade. No downloads are needed here.
 	(
 		sleep 15
-		if /usr/libexec/zapret-manager-installer >/tmp/zapret-manager-bootstrap.log 2>&1; then
-			logger -t zapret-manager-bootstrap "Zapret Manager dashboard installed"
-			/etc/init.d/zapret-manager-bootstrap disable >/dev/null 2>&1
+		if /usr/libexec/lt500-panel-apply >/tmp/zapret-manager-bootstrap.log 2>&1; then
+			logger -t zapret-manager-bootstrap 'LT500 panel is ready'
 		else
-			logger -t zapret-manager-bootstrap "Zapret Manager dashboard installation failed; see /tmp/zapret-manager-bootstrap.log"
+			logger -t zapret-manager-bootstrap 'Panel installation deferred or failed; see /tmp/zapret-manager-bootstrap.log'
 		fi
 	) &
 }

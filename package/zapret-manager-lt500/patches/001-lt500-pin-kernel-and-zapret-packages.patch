@@ -5,7 +5,7 @@
  zapret_action() {
  	local action="$1"
 +	if [ -f /etc/lt500-allinone ]; then
-+		case "$action" in install|update|remove) echo '{"error":"LT500v2 v2.0-zapret-rc1: Zapret закреплён в прошивке; обновляйте или восстанавливайте его только обновлением firmware"}'; return 1 ;; esac
++		case "$action" in install|update|remove) echo '{"error":"LT500v2: Zapret закреплён в прошивке; обновляйте или восстанавливайте его только обновлением firmware"}'; return 1 ;; esac
 +	fi
  	case "$action" in
  		install)
@@ -16,7 +16,7 @@
  	local mode="$1"
 +	if [ -f /etc/lt500-allinone ]; then
 +		if _st_awg_loaded && command -v awg >/dev/null 2>&1 && _awg_proto_ok; then
-+			[ "$mode" = update ] && _rb_warn "LT500v2 v2.0-zapret-rc1: AmneziaWG закреплён в прошивке и обновляется вместе с firmware"
++			[ "$mode" = update ] && _rb_warn "LT500v2: AmneziaWG закреплён в прошивке и обновляется вместе с firmware"
 +			return 0
 +		fi
 +		echo "ОШИБКА: встроенный AmneziaWG LT500 отсутствует или не загрузился — восстановите firmware, внешний kmod не устанавливаем"
@@ -30,7 +30,7 @@
  awg_action() {
  	local action="$1" mode="$2" i name route fw conf ep
 +	if [ -f /etc/lt500-allinone ]; then
-+		case "$action" in install|update|remove) echo '{"error":"LT500v2 v2.0-zapret-rc1: AmneziaWG закреплён в прошивке; пакеты обновляются только вместе с firmware"}'; return 1 ;; esac
++		case "$action" in install|update|remove) echo '{"error":"LT500v2: AmneziaWG закреплён в прошивке; пакеты обновляются только вместе с firmware"}'; return 1 ;; esac
 +	fi
  	case "$action" in
  		install|update|remove|gen|create|pick|replace|regen)

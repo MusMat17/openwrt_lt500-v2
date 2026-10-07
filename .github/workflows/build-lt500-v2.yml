@@ -1,16 +1,22 @@
-name: Build LT500 v2.0-zapret-rc1 All-in-One
+name: Build LT500 v2.0-zapret-rc2 All-in-One
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - v2.0-zapret-rc1
+      - v2.0-zapret-rc2
     paths:
       - 'target/linux/ramips/**'
       - 'package/system/opkg/**'
       - 'package/kernel/linux/modules/crypto.mk'
       - 'package/kernel/linux/modules/netsupport.mk'
       - 'package/steer-core/**'
+      - 'package/steer-modules/**'
+      - 'package/kernel/amneziawg-lt500/**'
+      - 'package/network/utils/amneziawg-tools-lt500/**'
+      - 'package/luci-proto-amneziawg/**'
+      - 'scripts/lt500/**'
+      - 'files/etc/lt500-*'
       - 'package/zapret-manager-lt500/**'
       - 'feeds.conf.default'
       - 'LT500-V2-PORT.md'
@@ -20,7 +26,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: lt500-v2-zapret-rc1
+  group: lt500-v2-zapret-rc2
   cancel-in-progress: true
 
 jobs:
@@ -31,6 +37,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Check panel update and rollback before compiling
+        run: python3 scripts/lt500/test-panel-updates.py
 
       - name: Install build dependencies
         run: |
@@ -65,6 +74,13 @@ jobs:
           test -x "$GITHUB_WORKSPACE/package/steer-core/files/usr/sbin/steer"
           test -x "$GITHUB_WORKSPACE/package/steer-core/files/usr/sbin/steerd"
           test -x "$GITHUB_WORKSPACE/package/steer-core/files/etc/init.d/steer"
+          for module in vless hysteria2 proxy xsteer obfs tgws; do
+            MODULE_SRC="$PWD/build/pkg/mipsel_24kc-$module"
+            MODULE_DST="$GITHUB_WORKSPACE/package/steer-modules/files/$module"
+            test -x "$MODULE_SRC/usr/sbin/steer-$module"
+            mkdir -p "$MODULE_DST"
+            cp -a "$MODULE_SRC"/. "$MODULE_DST"/
+          done
 
           echo "===== Steer payload ====="
           du -sh "$GITHUB_WORKSPACE/package/steer-core/files"
@@ -75,7 +91,7 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Configure LT500 v2.0-zapret-rc1
+      - name: Configure LT500 v2.0-zapret-rc2
         run: |
           cat > .config <<'EOF'
           CONFIG_TARGET_ramips=y
@@ -92,14 +108,21 @@ jobs:
           CONFIG_PACKAGE_amneziawg-tools=y
           CONFIG_PACKAGE_luci-proto-amneziawg=y
           CONFIG_PACKAGE_steer-core=y
+          CONFIG_PACKAGE_kmod-tun=y
+          CONFIG_PACKAGE_steer-vless=y
+          CONFIG_PACKAGE_steer-hysteria2=y
+          CONFIG_PACKAGE_steer-proxy=y
+          CONFIG_PACKAGE_steer-xsteer=y
+          CONFIG_PACKAGE_steer-obfs=y
+          CONFIG_PACKAGE_steer-tgws=y
           CONFIG_PACKAGE_zapret-manager-lt500=y
           CONFIG_IMAGEOPT=y
           CONFIG_VERSIONOPT=y
           CONFIG_VERSION_NUMBER="23.05.5"
+          # CONFIG_VERSION_FILENAMES is not set
           CONFIG_VERSION_REPO="https://downloads.openwrt.org/releases/23.05.5"
           # These source feeds have no matching downloads.openwrt.org repositories.
           # Their selected packages still build and are included in the image.
-          # CONFIG_FEED_amneziawg is not set
           # CONFIG_FEED_zapret is not set
           EOF
 
@@ -120,6 +143,13 @@ jobs:
             CONFIG_PACKAGE_amneziawg-tools \
             CONFIG_PACKAGE_luci-proto-amneziawg \
             CONFIG_PACKAGE_steer-core \
+            CONFIG_PACKAGE_kmod-tun \
+            CONFIG_PACKAGE_steer-vless \
+            CONFIG_PACKAGE_steer-hysteria2 \
+            CONFIG_PACKAGE_steer-proxy \
+            CONFIG_PACKAGE_steer-xsteer \
+            CONFIG_PACKAGE_steer-obfs \
+            CONFIG_PACKAGE_steer-tgws \
             CONFIG_PACKAGE_zapret-manager-lt500
           do
             grep -q "^$sym=y" .config || { echo "Missing $sym"; exit 1; }
@@ -130,8 +160,8 @@ jobs:
             'CONFIG_IMAGEOPT=y' \
             'CONFIG_VERSIONOPT=y' \
             'CONFIG_VERSION_NUMBER="23.05.5"' \
+            '# CONFIG_VERSION_FILENAMES is not set' \
             'CONFIG_VERSION_REPO="https://downloads.openwrt.org/releases/23.05.5"' \
-            '# CONFIG_FEED_amneziawg is not set' \
             '# CONFIG_FEED_zapret is not set'
           do
             grep -Fx "$setting" .config || { echo "Incorrect runtime feed/version setting: $setting"; exit 1; }
@@ -164,7 +194,8 @@ jobs:
             CONFIG_NET_IP_TUNNEL=m \
             CONFIG_DST_CACHE=y \
             CONFIG_GRO_CELLS=y \
-            CONFIG_IPV6=y
+            CONFIG_IPV6=y \
+            CONFIG_TUN=m
           do
             grep -Fx "$setting" "$KDIR/.config" || {
               echo "Missing kernel prerequisite: $setting"
@@ -176,6 +207,7 @@ jobs:
           done
 
           echo "===== UDP tunnel modules ====="
+          test -s "$KDIR/drivers/net/tun.ko"
           test -s "$KDIR/net/ipv4/ip_tunnel.ko" || {
             echo "Missing IP tunnel dependency ip_tunnel.ko"
             exit 1
@@ -240,7 +272,7 @@ jobs:
             kmod-nft-queue kmod-nft-nat kmod-nft-offload \
             kmod-iptunnel kmod-udptunnel4 kmod-udptunnel6 \
             kmod-amneziawg amneziawg-tools luci-proto-amneziawg \
-            steer-core zapret-manager-lt500
+            kmod-tun steer-core steer-vless steer-hysteria2 steer-proxy steer-xsteer steer-obfs steer-tgws zapret-manager-lt500
           do
             grep -q "^$p " "$MANIFEST" || { echo "Package missing from image: $p"; exit 1; }
             grep "^$p " "$MANIFEST"
@@ -252,6 +284,17 @@ jobs:
           test -x "$ROOT/usr/bin/awg"
           test -x "$ROOT/opt/zapret/nfq/nfqws"
           test -x "$ROOT/usr/libexec/zapret-manager-installer"
+          test -x "$ROOT/usr/libexec/lt500-panel-apply"
+          test -x "$ROOT/usr/libexec/lt500-panel-update"
+          for module in vless hysteria2 proxy xsteer obfs tgws; do
+            test -x "$ROOT/usr/sbin/steer-$module"
+          done
+          grep -q 'proto_config_add_string "awg_i1"' "$ROOT/lib/netifd/proto/amneziawg.sh"
+          grep -q 'lt500-panel-update' "$ROOT/usr/libexec/zapret-manager-installer"
+          grep -qx awg2-i1-tun-steer203 "$ROOT/etc/lt500-capabilities"
+          staging_dir/host/bin/fwtool -i /tmp/image-metadata.json "$IMAGE"
+          python3 -c 'import json; m=json.load(open("/tmp/image-metadata.json")); assert "cudy,lt500-v2" in m["supported_devices"]; assert m["version"]["version"] == "23.05.5"'
+          python3 scripts/lt500/check-module-abi.py "$ROOT"
 
           echo "===== runtime release and repositories ====="
           grep -Fx "DISTRIB_RELEASE='23.05.5'" "$ROOT/etc/openwrt_release"
@@ -266,75 +309,33 @@ jobs:
           echo "===== target files ====="
           ls -lh "$DIR"
 
-      - name: Prepare public RC1 release assets
-        run: |
-          DIR="bin/targets/ramips/mt76x8"
-          SRC="$DIR/openwrt-ramips-mt76x8-cudy_lt500-v2-squashfs-sysupgrade.bin"
-          DST="$DIR/Cudy-LT500v2-OpenWrt-23.05.5-v2.0-zapret-rc1-sysupgrade.bin"
-          cp "$SRC" "$DST"
-          sha256sum "$DST" > "$DIR/Cudy-LT500v2-OpenWrt-23.05.5-v2.0-zapret-rc1-SHA256.txt"
+      - name: Prepare firmware and independent panel assets
+        run: python3 scripts/lt500/release-assets.py
 
-      - name: Publish Cudy LT500v2 — OpenWrt 23.05.5 — v2.0-zapret-rc1
-        if: github.ref == 'refs/heads/v2.0-zapret-rc1'
+      - name: Upload checked RC2 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cudy-lt500v2-openwrt-23.05.5-v2.0-zapret-rc2
+          if-no-files-found: error
+          retention-days: 30
+          path: bin/targets/ramips/mt76x8/release/*
+
+      - name: Publish RC2 and compatible panel channel
+        if: github.ref == 'refs/heads/v2.0-zapret-rc2'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          DIR="bin/targets/ramips/mt76x8"
-          TAG="v2.0-zapret-rc1"
-          TITLE="Cudy LT500v2 — OpenWrt 23.05.5 — v2.0-zapret-rc1"
-
-          cat > /tmp/release-notes.md <<'EOF'
-          # Cudy LT500v2 — OpenWrt 23.05.5 — v2.0-zapret-rc1
-
-          First public release candidate of the LT500v2 / R25 OpenWrt port.
-
-          **Hardware target:** Cudy LT500v2 (R25) only.
-          **Base:** OpenWrt 23.05.5 / ramips/mt76x8.
-          **LTE:** Quectel EC200A, CDC-ECM (usb0), AT control on /dev/ttyUSB1.
-
-          ## Included
-          - LTE support for the EC200A via CDC-ECM
-          - LuCI
-          - curl and unzip
-          - opkg upgrade safety guard
-          - Zapret 72.20260307 built from source for this firmware
-          - Zapret Manager 2.48
-          - Steer Core 2.0.3
-          - AmneziaWG kernel module/tools/LuCI built for this exact kernel ABI
-          - WARP/AWG support through Zapret Manager + Steer
-
-          ## Important
-          This is RC1 for an unsupported device port. Use only on Cudy LT500v2 / R25.
-
-          Installation path:
-          Cudy stock firmware → official Cudy intermediary OpenWrt firmware → this sysupgrade image.
-
-          Before flashing, run:
-          sysupgrade -T /tmp/Cudy-LT500v2-OpenWrt-23.05.5-v2.0-zapret-rc1-sysupgrade.bin
-
-          Do not force-install foreign kmod-* packages. Zapret and AmneziaWG in this build are firmware-owned and should be updated only with a matching LT500 firmware release.
-
-          TFTP recovery remains recommended before experimenting.
-          EOF
-
-          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
-          gh release create "$TAG" \
-            --target "$GITHUB_SHA" \
-            --title "$TITLE" \
-            --notes-file /tmp/release-notes.md \
-            --prerelease \
-            "$DIR/Cudy-LT500v2-OpenWrt-23.05.5-v2.0-zapret-rc1-sysupgrade.bin" \
-            "$DIR/Cudy-LT500v2-OpenWrt-23.05.5-v2.0-zapret-rc1-SHA256.txt" \
-            "$DIR/openwrt-ramips-mt76x8-cudy_lt500-v2.manifest" \
-            "$DIR/profiles.json"
-      - name: Upload LT500 v2.0-zapret-rc1 firmware
-        uses: actions/upload-artifact@v4
-        with:
-          name: cudy-lt500v2-openwrt-23.05.5-v2.0-zapret-rc1
-          if-no-files-found: error
-          retention-days: 14
-          path: |
-            bin/targets/ramips/mt76x8/openwrt-ramips-mt76x8-cudy_lt500-v2-squashfs-sysupgrade.bin
-            bin/targets/ramips/mt76x8/openwrt-ramips-mt76x8-cudy_lt500-v2.manifest
-            bin/targets/ramips/mt76x8/profiles.json
-            bin/targets/ramips/mt76x8/sha256sums
+          DIR="bin/targets/ramips/mt76x8/release"
+          TAG="v2.0-zapret-rc2"
+          # Preserve RC1 and refuse to overwrite an already published RC2.
+          gh release create "$TAG" --target "$GITHUB_SHA" \
+            --title 'Cudy LT500v2 — OpenWrt 23.05.5 — v2.0-zapret-rc2' \
+            --notes-file "$DIR/INSTALL-RC2.md" --prerelease "$DIR"/*
+          if ! gh release view lt500-panel-stable >/dev/null 2>&1; then
+            gh release create lt500-panel-stable --target "$GITHUB_SHA" \
+              --title 'Compatible LT500 panel updates' \
+              --notes 'Reviewed panel-only packages for LT500 all-in-one firmware. Kernel modules are updated with firmware.' \
+              --prerelease
+          fi
+          gh release upload lt500-panel-stable --clobber \
+            "$DIR/lt500-panel.json" "$DIR"/zapret-manager-lt500_*.ipk

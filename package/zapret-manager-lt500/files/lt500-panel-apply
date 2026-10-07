@@ -1,0 +1,92 @@
+#!/bin/sh
+# Apply the packaged LT500 installer; network configuration stays in place.
+set -eu
+umask 077
+INSTALLER=/usr/libexec/zapret-manager-installer
+STATE=/etc/lt500-panel
+BACKUP=/root/lt500-panel-backup
+LOCK=/tmp/lt500-panel-apply.lock
+PATHS='opt/zapret-manager-luci
+usr/libexec/rpcd/zapret-manager
+usr/share/luci/menu.d/luci-app-zapret-manager.json
+usr/share/rpcd/acl.d/luci-app-zapret-manager.json
+usr/share/zm-redbtn/services.conf
+www/luci-static/resources/view/zapret-manager
+www/luci-static/resources/zapret-manager
+www/luci-static/resources/bytetube
+www/luci-static/resources/view/bytetube
+www/zm
+www/zm-webui.html
+usr/bin/zms
+usr/bin/zmw
+etc/lt500-panel/installed.sha256'
+fail() { echo "$*" >&2; exit 1; }
+[ -f /etc/lt500-allinone ] || fail 'This updater requires the LT500 all-in-one firmware'
+[ "$(cat /tmp/sysinfo/board_name)" = cudy,lt500-v2 ] || fail 'Incorrect hardware target'
+mkdir "$LOCK" 2>/dev/null || fail 'Panel update is already running'
+trap 'rm -rf "$LOCK"' EXIT
+mkdir -p "$STATE" "$BACKUP"
+chmod 700 "$STATE" "$BACKUP"
+restore_panel() {
+	[ -s "$BACKUP/previous.tar.gz" ] || return 1
+	for p in $PATHS; do rm -rf "/$p"; done
+	tar -xzf "$BACKUP/previous.tar.gz" -C /
+	rm -f /tmp/luci-indexcache* /tmp/luci-modulecache/*
+	/etc/init.d/rpcd restart >/dev/null 2>&1 || true
+	/etc/init.d/uhttpd restart >/dev/null 2>&1 || true
+}
+if [ "${1:-apply}" = rollback ]; then
+	restore_panel || fail 'No previous panel backup'
+	sha256sum "$INSTALLER" | awk '{print $1}' > "$STATE/rollback.sha256"
+	echo 'Previous panel restored. Settings and kernel modules retained.'
+	exit 0
+fi
+[ "${1:-apply}" = apply ] || fail 'Usage: lt500-panel-apply [apply|rollback]'
+sh -n "$INSTALLER" || fail 'Invalid packaged installer'
+grep -q 'lt500-panel-update' "$INSTALLER" || fail 'Installer lacks LT500 update protection'
+EXPECTED="$(sha256sum "$INSTALLER" | awk '{print $1}')"
+if [ "$(cat "$STATE/rollback.sha256" 2>/dev/null || true)" = "$EXPECTED" ]; then
+	echo 'Previous panel is pinned after manual rollback'
+	exit 0
+fi
+rm -f "$STATE/rollback.sha256"
+if [ "$(cat "$STATE/installed.sha256" 2>/dev/null || true)" = "$EXPECTED" ] &&
+   [ -x /usr/libexec/rpcd/zapret-manager ] &&
+   grep -q 'lt500-panel-update' /opt/zapret-manager-luci/backend.sh; then
+	exit 0
+fi
+# Do not race running panel jobs. The installer repeats this check itself.
+for p in /tmp/zapret-manager-luci/*.pid; do
+	[ -f "$p" ] || continue
+	case "${p##*/}" in versions.pid|sysinfo.pid|*_download.pid|redbtn_deep.pid) continue ;; esac
+	if kill -0 "$(cat "$p")" 2>/dev/null && ! grep -q '^__DONE__' "${p%.pid}.log" 2>/dev/null; then
+		fail 'Wait until the running panel operation finishes'
+	fi
+done
+# The generated dashboard occupies about 1.6 MiB. Reserve space for new files
+# and one compressed backup; never keep an unbounded backup history.
+FREE="$(df -k /overlay | awk 'NR==2 {print $4}')"
+[ "${FREE:-0}" -ge 2300 ] || fail 'Need at least 2300 KiB free in /overlay for a panel update'
+: > "$LOCK/panel.list"
+for p in $PATHS; do [ ! -e "/$p" ] && [ ! -L "/$p" ] || echo "$p" >> "$LOCK/panel.list"; done
+# Back up settings separately. Restore them only on immediate installation
+# failure; a later manual rollback must retain the current tunnel settings.
+: > "$LOCK/settings.list"
+for p in etc/config/network etc/config/firewall etc/config/uhttpd etc/config/zapret etc/crontabs/root; do
+	[ ! -e "/$p" ] || echo "$p" >> "$LOCK/settings.list"
+done
+tar -czf "$LOCK/settings.tar.gz" -C / -T "$LOCK/settings.list"
+tar -czf "$BACKUP/previous.tar.gz.new" -C / -T "$LOCK/panel.list"
+mv "$BACKUP/previous.tar.gz.new" "$BACKUP/previous.tar.gz"
+if "$INSTALLER" && sh -n /opt/zapret-manager-luci/backend.sh &&
+   sh -n /usr/libexec/rpcd/zapret-manager &&
+   grep -q 'lt500-panel-update' /opt/zapret-manager-luci/backend.sh &&
+   [ -s /www/zm/app.js ]; then
+	printf '%s\n' "$EXPECTED" > "$STATE/installed.sha256.new"
+	mv "$STATE/installed.sha256.new" "$STATE/installed.sha256"
+	echo 'LT500 panel installed. Backup: /root/lt500-panel-backup/previous.tar.gz'
+else
+	tar -xzf "$LOCK/settings.tar.gz" -C /
+	restore_panel || true
+	fail 'Panel installation failed; previous dashboard and settings restored'
+fi
