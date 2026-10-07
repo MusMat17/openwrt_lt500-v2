@@ -49,6 +49,8 @@ echo '{version}' >> '{root}/calls'
     (root/'usr/libexec/rpcd/zapret-manager').unlink()
     install('v1');run();assert (root/'etc/config/network').read_text()=='saved-network\n'
     put('opt/zapret-manager-luci/state/ui.theme','dark\n')
+    run('rollback',ok=False)
+    assert 'v1' in (root/'opt/zapret-manager-luci/backend.sh').read_text()
     before=(root/'calls').read_text();run();assert (root/'calls').read_text()==before
     old=(root/'opt/zapret-manager-luci/backend.sh').read_bytes()
     install('broken',True);run(ok=False)

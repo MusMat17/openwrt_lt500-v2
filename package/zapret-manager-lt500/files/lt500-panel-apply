@@ -36,6 +36,8 @@ restore_panel() {
 	/etc/init.d/uhttpd restart >/dev/null 2>&1 || true
 }
 if [ "${1:-apply}" = rollback ]; then
+	[ -s "$BACKUP/previous.tar.gz" ] || fail 'No previous panel backup'
+	tar -tzf "$BACKUP/previous.tar.gz" | grep -qx 'opt/zapret-manager-luci/backend.sh' || fail 'No previous dashboard to roll back to'
 	restore_panel || fail 'No previous panel backup'
 	sha256sum "$INSTALLER" | awk '{print $1}' > "$STATE/rollback.sha256"
 	echo 'Previous panel restored. Settings and kernel modules retained.'

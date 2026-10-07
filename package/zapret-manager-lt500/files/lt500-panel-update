@@ -25,9 +25,9 @@ if ! fetch "$BASE/lt500-panel.json" "$WORK/manifest.json" 12 2>/tmp/lt500-panel-
 	error
 fi
 j() { jsonfilter -i "$WORK/manifest.json" -e "@.$1"; }
-VERSION="$(j version)"
-FILE="$(j file)"
-SHA="$(j sha256)"
+VERSION="$(j version)" || error
+FILE="$(j file)" || error
+SHA="$(j sha256)" || error
 [ "$(j format)" = 1 ] && [ "$(j board)" = cudy,lt500-v2 ] && [ "$(j capability)" = awg2-i1-tun-steer203 ] || error
 printf '%s\n' "$VERSION" | grep -qE '^[0-9]+(\.[0-9]+)*-[0-9]+$' || error
 [ "$FILE" = "zapret-manager-lt500_${VERSION}_mipsel_24kc.ipk" ] || error
