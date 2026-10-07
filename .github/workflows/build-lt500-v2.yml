@@ -122,6 +122,9 @@ jobs:
       - name: Download sources
         run: make download -j8
 
+      - name: Verify pinned Zapret Manager patches before toolchain build
+        run: make package/zapret-manager-lt500/prepare V=s
+
       - name: Build toolchain, kernel and verify AmneziaWG UDP tunnel prerequisites
         run: |
           # target/linux/compile assumes OpenWrt host tools and cross-toolchain

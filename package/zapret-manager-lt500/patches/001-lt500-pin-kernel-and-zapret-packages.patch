@@ -1,6 +1,7 @@
 --- a/ZapretManager_LuCI.sh
 +++ b/ZapretManager_LuCI.sh
-@@ -1234,5 +1234,9 @@
+@@ -1233,6 +1233,9 @@
+ }
  zapret_action() {
  	local action="$1"
 +	if [ -f /etc/lt500-allinone ]; then
@@ -9,7 +10,8 @@
  	case "$action" in
  		install)
  			if [ ! -f /etc/init.d/zapret ] && [ -f /etc/init.d/zapret2 ] && [ ! -f "$EXPERT_MODE_FILE" ]; then
-@@ -8615,4 +8619,12 @@
+@@ -8614,6 +8617,14 @@
+ 
  _st_install_awg() {
  	local mode="$1"
 +	if [ -f /etc/lt500-allinone ]; then
@@ -22,7 +24,9 @@
 +	fi
  	if [ "$mode" != update ] && _st_awg_loaded && command -v awg >/dev/null 2>&1 && _awg_proto_ok; then return 0; fi
  	local rel arch tgt sub post luci old_luci base bases m p f ok=0 was_loaded=0 kver0 kver1 need="" force=""
-@@ -12551,5 +12563,8 @@
+ 	_st_awg_loaded && was_loaded=1
+@@ -12550,6 +12561,9 @@
+ 
  awg_action() {
  	local action="$1" mode="$2" i name route fw conf ep
 +	if [ -f /etc/lt500-allinone ]; then
