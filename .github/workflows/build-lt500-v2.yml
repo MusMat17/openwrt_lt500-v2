@@ -93,8 +93,14 @@ jobs:
           CONFIG_PACKAGE_luci-proto-amneziawg=y
           CONFIG_PACKAGE_steer-core=y
           CONFIG_PACKAGE_zapret-manager-lt500=y
+          CONFIG_IMAGEOPT=y
+          CONFIG_VERSIONOPT=y
           CONFIG_VERSION_NUMBER="23.05.5"
           CONFIG_VERSION_REPO="https://downloads.openwrt.org/releases/23.05.5"
+          # These source feeds have no matching downloads.openwrt.org repositories.
+          # Their selected packages still build and are included in the image.
+          # CONFIG_FEED_amneziawg is not set
+          # CONFIG_FEED_zapret is not set
           EOF
 
           make defconfig
@@ -117,6 +123,18 @@ jobs:
             CONFIG_PACKAGE_zapret-manager-lt500
           do
             grep -q "^$sym=y" .config || { echo "Missing $sym"; exit 1; }
+          done
+
+          # Check after defconfig: hidden version options are otherwise discarded.
+          for setting in \
+            'CONFIG_IMAGEOPT=y' \
+            'CONFIG_VERSIONOPT=y' \
+            'CONFIG_VERSION_NUMBER="23.05.5"' \
+            'CONFIG_VERSION_REPO="https://downloads.openwrt.org/releases/23.05.5"' \
+            '# CONFIG_FEED_amneziawg is not set' \
+            '# CONFIG_FEED_zapret is not set'
+          do
+            grep -Fx "$setting" .config || { echo "Incorrect runtime feed/version setting: $setting"; exit 1; }
           done
 
       - name: Download sources
@@ -234,6 +252,16 @@ jobs:
           test -x "$ROOT/usr/bin/awg"
           test -x "$ROOT/opt/zapret/nfq/nfqws"
           test -x "$ROOT/usr/libexec/zapret-manager-installer"
+
+          echo "===== runtime release and repositories ====="
+          grep -Fx "DISTRIB_RELEASE='23.05.5'" "$ROOT/etc/openwrt_release"
+          FEEDS="$ROOT/etc/opkg/distfeeds.conf"
+          cat "$FEEDS"
+          grep -Fx 'src/gz openwrt_base https://downloads.openwrt.org/releases/23.05.5/packages/mipsel_24kc/base' "$FEEDS"
+          if grep -Eq '23\.05-SNAPSHOT|/packages/mipsel_24kc/(amneziawg|zapret)(/|$)' "$FEEDS"; then
+            echo "Image contains unavailable runtime repositories"
+            exit 1
+          fi
 
           echo "===== target files ====="
           ls -lh "$DIR"
