@@ -120,6 +120,7 @@ jobs:
           CONFIG_VERSIONOPT=y
           CONFIG_VERSION_NUMBER="23.05.5"
           # CONFIG_VERSION_FILENAMES is not set
+          # CONFIG_VERSION_CODE_FILENAMES is not set
           CONFIG_VERSION_REPO="https://downloads.openwrt.org/releases/23.05.5"
           # These source feeds have no matching downloads.openwrt.org repositories.
           # Their selected packages still build and are included in the image.
@@ -161,6 +162,7 @@ jobs:
             'CONFIG_VERSIONOPT=y' \
             'CONFIG_VERSION_NUMBER="23.05.5"' \
             '# CONFIG_VERSION_FILENAMES is not set' \
+            '# CONFIG_VERSION_CODE_FILENAMES is not set' \
             'CONFIG_VERSION_REPO="https://downloads.openwrt.org/releases/23.05.5"' \
             '# CONFIG_FEED_zapret is not set'
           do
@@ -177,9 +179,9 @@ jobs:
         run: |
           # target/linux/compile assumes OpenWrt host tools and cross-toolchain
           # already exist. Build them explicitly before the kernel preflight.
-          make tools/install -j"$(nproc)" V=s || make tools/install -j1 V=s
-          make toolchain/install -j"$(nproc)" V=s || make toolchain/install -j1 V=s
-          make target/linux/compile -j"$(nproc)" V=s || make target/linux/compile -j1 V=s
+          make tools/install -j"$(nproc)" || make tools/install -j1 V=s
+          make toolchain/install -j"$(nproc)" || make toolchain/install -j1 V=s
+          make target/linux/compile -j"$(nproc)" || make target/linux/compile -j1 V=s
 
           KDIR="$(find build_dir/target-mipsel_24kc_musl/linux-ramips_mt76x8 -mindepth 1 -maxdepth 1 -type d -name 'linux-[0-9]*' -print -quit)"
           test -n "$KDIR"
@@ -246,7 +248,26 @@ jobs:
 
       - name: Build
         run: |
-          make -j"$(nproc)" V=s || make -j1 V=s
+          make -j"$(nproc)" || make -j1 V=s
+
+      - name: Archive candidate rootfs for verification recovery
+        run: |
+          ROOT="$(find build_dir -maxdepth 3 -type d -name root-ramips -print -quit)"
+          test -n "$ROOT"
+          tar -czf bin/targets/ramips/mt76x8/lt500-rc2-rootfs.tar.gz -C "$ROOT" .
+
+      - name: Preserve build outputs for verification recovery
+        uses: actions/upload-artifact@v4
+        with:
+          name: lt500-rc2-build-candidate
+          include-hidden-files: true
+          compression-level: 9
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            bin/targets/ramips/mt76x8/**
+            bin/packages/mipsel_24kc/*/zapret-manager-lt500_*.ipk
+            .config
 
       - name: Verify all-in-one image
         run: |
@@ -254,8 +275,10 @@ jobs:
           IMAGE="$DIR/openwrt-ramips-mt76x8-cudy_lt500-v2-squashfs-sysupgrade.bin"
           MANIFEST="$DIR/openwrt-ramips-mt76x8-cudy_lt500-v2.manifest"
 
-          test -s "$IMAGE"
-          test -s "$MANIFEST"
+          echo "===== available build outputs ====="
+          ls -lh "$DIR"
+          test -s "$IMAGE" || { echo "Expected sysupgrade image missing: $IMAGE"; exit 1; }
+          test -s "$MANIFEST" || { echo "Expected manifest missing: $MANIFEST"; exit 1; }
 
           echo "===== image ====="
           ls -lh "$IMAGE"
