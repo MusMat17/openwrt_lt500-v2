@@ -1,0 +1,52 @@
+name: Publish LT500 stable status and bundle downloads
+'on':
+  workflow_dispatch: null
+  push:
+    branches:
+    - v2.0-zapret-rc2
+    paths:
+    - .github/workflows/lt500-release-maintenance.yml
+permissions:
+  contents: write
+  actions: read
+jobs:
+  publish:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - name: Download verified RC2 release files
+      uses: actions/download-artifact@v4
+      with:
+        name: cudy-lt500v2-openwrt-23.05.5-v2.0-zapret-rc2
+        run-id: 37913955345
+        github-token: ${{ github.token }}
+        path: /tmp/lt500-release
+    - name: Verify files and package named bundle
+      run: |
+        cd /tmp/lt500-release
+        sha256sum -c SHA256SUMS
+        cp "$GITHUB_WORKSPACE/docs/LT500v2-RC2-INSTALL-RU.md" INSTALL-RC2-RU.md
+        python3 "$GITHUB_WORKSPACE/scripts/lt500/package-bundle.py" .
+    - name: Promote checked v1.0 and publish download assets
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        gh api repos/MusMat17/openwrt_lt500-v2/releases/405205463 > /tmp/lt500-stable-current.json
+        python3 - <<'PYCODE'
+        import json
+        from pathlib import Path
+        r=json.loads(Path('/tmp/lt500-stable-current.json').read_text())
+        assert r['tag_name']=='v1.0-rc1'
+        assert {616892900,616892902,616892899,616892898}.issubset({a['id'] for a in r['assets']})
+        body=r['body'].replace('# Cudy LT500v2 — OpenWrt 23.05.5 — v1.0-rc1','# Cudy LT500v2 — OpenWrt 23.05.5 — v1.0-stable')
+        body=body.replace('First public release candidate of the clean OpenWrt port for','Stable release of the clean OpenWrt port for')
+        body=body.replace('This is a release candidate. TFTP recovery is strongly recommended before experimentation.','The repository owner confirmed stable operation on the router. This promotion preserves the tested firmware bytes and original v1.0-rc1 tag and asset names.')
+        Path('/tmp/lt500-stable-edit.json').write_text(json.dumps({'name':'Cudy LT500v2 — OpenWrt 23.05.5 — v1.0-stable','body':body,'draft':False,'prerelease':False,'make_latest':'true'}))
+        PYCODE
+        gh api --method PATCH repos/MusMat17/openwrt_lt500-v2/releases/405205463 --input /tmp/lt500-stable-edit.json --jq '{name,prerelease,html_url}'
+        gh release upload v2.0-zapret-rc2 --clobber \
+          /tmp/lt500-release/LT500v2-OpenWrt-23.05.5-RC2-zapret-bundle.zip \
+          /tmp/lt500-release/LT500v2-OpenWrt-23.05.5-RC2-zapret-bundle.zip.sha256 \
+          /tmp/lt500-release/INSTALL-RC2-RU.md
