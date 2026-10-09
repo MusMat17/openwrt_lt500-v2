@@ -1,0 +1,60 @@
+name: Verify and publish preserved LT500 RC2
+'on':
+  workflow_dispatch: null
+  push:
+    branches:
+    - v2.0-zapret-rc2
+    paths:
+    - .github/workflows/verify-lt500-rc2.yml
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: lt500-rc2-publish
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+    - name: Checkout corrected verifier
+      uses: actions/checkout@v4
+    - name: Download preserved RC2 build
+      uses: actions/download-artifact@v4
+      with:
+        name: lt500-rc2-build-candidate
+        run-id: 37739409518
+        github-token: ${{ github.token }}
+    - name: Install target userspace emulator
+      run: 'sudo apt-get update
+
+        sudo apt-get install -y qemu-user-static
+
+        '
+    - name: Restore rootfs and verify immutable image
+      run: 'mkdir rootfs
+
+        tar -xzf bin/targets/ramips/mt76x8/lt500-rc2-rootfs.tar.gz -C rootfs
+
+        echo "d7c1277aa4ee0673dbb30cf150bdcd21d2b2663608e53d5cafa53dbcd107b447  bin/targets/ramips/mt76x8/openwrt-ramips-mt76x8-cudy_lt500-v2-squashfs-sysupgrade.bin" | sha256sum -c -
+
+        '
+    - name: Check panel update and rollback
+      run: python3 scripts/lt500/test-panel-updates.py
+    - name: Verify all-in-one image
+      run: "DIR=\"bin/targets/ramips/mt76x8\"\nIMAGE=\"$DIR/openwrt-ramips-mt76x8-cudy_lt500-v2-squashfs-sysupgrade.bin\"\nMANIFEST=\"$DIR/openwrt-ramips-mt76x8-cudy_lt500-v2.manifest\"\n\necho \"===== available build outputs =====\"\nls -lh \"$DIR\"\ntest -s \"$IMAGE\" || { echo \"Expected sysupgrade image missing: $IMAGE\"; exit 1; }\ntest -s \"$MANIFEST\" || { echo \"Expected manifest missing: $MANIFEST\"; exit 1; }\n\necho \"===== image =====\"\nls -lh \"$IMAGE\"\nsha256sum \"$IMAGE\"\n\nSIZE=\"$(stat -c%s \"$IMAGE\")\"\nMAX=\"$((15872 * 1024))\"\necho \"image_bytes=$SIZE max_bytes=$MAX\"\n[ \"$SIZE\" -le \"$MAX\" ] || { echo \"Image exceeds LT500 firmware partition\"; exit 1; }\n\necho \"===== required packages =====\"\nfor p in \\\n  curl unzip zapret \\\n  kmod-nft-queue kmod-nft-nat kmod-nft-offload \\\n  kmod-iptunnel kmod-udptunnel4 kmod-udptunnel6 \\\n  kmod-amneziawg amneziawg-tools luci-proto-amneziawg \\\n  kmod-tun steer-core steer-vless steer-hysteria2 steer-proxy steer-xsteer\
+        \ steer-obfs steer-tgws zapret-manager-lt500\ndo\n  grep -q \"^$p \" \"$MANIFEST\" || { echo \"Package missing from image: $p\"; exit 1; }\n  grep \"^$p \" \"$MANIFEST\"\ndone\n\nROOT=rootfs\ntest -n \"$ROOT\"\ntest -x \"$ROOT/usr/sbin/steer\"\ntest -x \"$ROOT/usr/bin/awg\"\ntest -x \"$ROOT/opt/zapret/nfq/nfqws\"\ntest -x \"$ROOT/usr/libexec/zapret-manager-installer\"\ntest -x \"$ROOT/usr/libexec/lt500-panel-apply\"\ntest -x \"$ROOT/usr/libexec/lt500-panel-update\"\nfor module in vless hysteria2 proxy xsteer obfs tgws; do\n  test -x \"$ROOT/usr/sbin/steer-$module\"\ndone\ngrep -q 'proto_config_add_string \"awg_i1\"' \"$ROOT/lib/netifd/proto/amneziawg.sh\"\ngrep -q 'lt500-panel-update' \"$ROOT/usr/libexec/zapret-manager-installer\"\ngrep -qx awg2-i1-tun-steer203 \"$ROOT/etc/lt500-capabilities\"\nqemu-mipsel-static -L \"$ROOT\" \"$ROOT/usr/bin/fwtool\" -i /tmp/image-metadata.json \"$IMAGE\"\npython3 -c 'import json; m=json.load(open(\"/tmp/image-metadata.json\")); assert \"cudy,lt500-v2\"\
+        \ in m[\"supported_devices\"]; assert m[\"version\"][\"version\"] == \"23.05.5\"'\npython3 scripts/lt500/check-module-abi.py \"$ROOT\"\n\necho \"===== runtime release and repositories =====\"\ngrep -Fx \"DISTRIB_RELEASE='23.05.5'\" \"$ROOT/etc/openwrt_release\"\nFEEDS=\"$ROOT/etc/opkg/distfeeds.conf\"\ncat \"$FEEDS\"\ngrep -Fx 'src/gz openwrt_base https://downloads.openwrt.org/releases/23.05.5/packages/mipsel_24kc/base' \"$FEEDS\"\nif grep -Eq '23\\.05-SNAPSHOT|/packages/mipsel_24kc/(amneziawg|zapret)(/|$)' \"$FEEDS\"; then\n  echo \"Image contains unavailable runtime repositories\"\n  exit 1\nfi\n\necho \"===== target files =====\"\nls -lh \"$DIR\"\n"
+    - name: Prepare release assets
+      run: python3 scripts/lt500/release-assets.py
+    - name: Upload checked release
+      uses: actions/upload-artifact@v4
+      with:
+        name: cudy-lt500v2-openwrt-23.05.5-v2.0-zapret-rc2
+        retention-days: 30
+        if-no-files-found: error
+        path: bin/targets/ramips/mt76x8/release/*
+    - name: Publish RC2 and panel channel
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: "DIR=\"bin/targets/ramips/mt76x8/release\"\nTAG=\"v2.0-zapret-rc2\"\n# Preserve RC1 and refuse to overwrite an already published RC2.\ngh release create \"$TAG\" --target 4b2c999e0e02282ce6f2aa734888013c4cb79d83 \\\n  --title 'Cudy LT500v2 \u2014 OpenWrt 23.05.5 \u2014 v2.0-zapret-rc2' \\\n  --notes-file \"$DIR/INSTALL-RC2.md\" --prerelease \"$DIR\"/*\nif ! gh release view lt500-panel-stable >/dev/null 2>&1; then\n  gh release create lt500-panel-stable --target 4b2c999e0e02282ce6f2aa734888013c4cb79d83 \\\n    --title 'Compatible LT500 panel updates' \\\n    --notes 'Reviewed panel-only packages for LT500 all-in-one firmware. Kernel modules are updated with firmware.' \\\n    --prerelease\nfi\ngh release upload lt500-panel-stable --clobber \\\n  \"$DIR/lt500-panel.json\" \"$DIR\"/zapret-manager-lt500_*.ipk\n"

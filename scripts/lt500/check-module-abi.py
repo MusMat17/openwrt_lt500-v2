@@ -6,7 +6,7 @@ version=re.search(r'^Version: (.+)$',(info/'kernel.control').read_text(),re.M).g
 controls=list(info.glob('kmod-*.control'))
 for p in controls:
     text=p.read_text()
-    dep=re.search(r'kernel \(= ([^)]+)\)',text)
+    dep=re.search(r'kernel\s*\(=\s*([^\s)]+)\s*\)',text)
     assert dep and dep.group(1)==version, f'{p.name}: foreign kernel dependency'
 for name in ('tun','amneziawg','udp_tunnel','ip6_udp_tunnel'):
     modules=list((root/'lib/modules').glob(f'*/{name}.ko'))
