@@ -43,6 +43,7 @@ jobs:
       run: |-
         cd bin/targets/ramips/mt76x8
         sha256sum -c sha256sums
+        echo "48873cfee1686549ab3a0d9d9eed9e5496be600795b6d49957926124e6da1f75  openwrt-ramips-mt76x8-cudy_lt500-v2-squashfs-sysupgrade.bin" | sha256sum -c -
         cd "$GITHUB_WORKSPACE"
         python3 - <<'PYCHECK'
         from pathlib import Path
@@ -65,7 +66,7 @@ jobs:
         Path('actual-rootfs.squashfs').write_bytes(image[offset:offset+used])
         print(f'Firmware SquashFS: offset={offset}, bytes={used}')
         PYCHECK
-        unsquashfs -no-progress -d image-rootfs actual-rootfs.squashfs
+        sudo unsquashfs -no-progress -d image-rootfs actual-rootfs.squashfs
     - name: Check panel installation and rollback
       run: |-
         python3 scripts/lt500/test-panel-updates.py
