@@ -1,10 +1,10 @@
-name: Build LT500 v2.0-zapret-rc2 All-in-One
+name: Build LT500 v2.0-zapret-rc3 All-in-One
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - v2.0-zapret-rc2
+      - v2.0-zapret-rc3
     paths:
       - 'target/linux/ramips/**'
       - 'package/system/opkg/**'
@@ -26,7 +26,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: lt500-v2-zapret-rc2
+  group: lt500-v2-zapret-rc3
   cancel-in-progress: true
 
 jobs:
@@ -49,18 +49,18 @@ jobs:
             build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
             gettext git libncurses-dev libssl-dev python3-setuptools rsync swig \
             unzip zlib1g-dev file wget curl libelf-dev python3 python3-distutils \
-            xz-utils zstd ca-certificates binutils
+            xz-utils zstd ca-certificates binutils qemu-user-static
 
-      - name: Build pinned Steer 2.0.3 for mipsel_24kc
+      - name: Build pinned Steer 2.0.5 for mipsel_24kc
         run: |
           rm -rf /tmp/steer /tmp/steer-ipk
           git clone https://github.com/splify2/steer.git /tmp/steer
-          git -C /tmp/steer checkout 81a78be4c26f1a8369a92813fbfbf13f225382ab
+          git -C /tmp/steer checkout 239c2897a726bc66dbe1900a3f4595d4d9b5f62d
 
           cd /tmp/steer
           STEER_ARCH=mipsel_24kc ./build.sh
 
-          IPK="$(find "$PWD/out" -maxdepth 1 -type f -name 'steer-core-2.0.3-1_mipsel_24kc.ipk' -print -quit)"
+          IPK="$(find "$PWD/out" -maxdepth 1 -type f -name 'steer-core-2.0.5-1_mipsel_24kc.ipk' -print -quit)"
           test -n "$IPK"
           ls -lh "$IPK"
 
@@ -92,7 +92,7 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Configure LT500 v2.0-zapret-rc2
+      - name: Configure LT500 v2.0-zapret-rc3
         run: |
           cat > .config <<'EOF'
           CONFIG_TARGET_ramips=y
@@ -174,7 +174,12 @@ jobs:
         run: make download -j8
 
       - name: Verify pinned Zapret Manager patches before toolchain build
-        run: make package/zapret-manager-lt500/prepare V=s
+        run: |
+          make package/zapret-manager-lt500/prepare V=s
+          MANAGER="$(find build_dir -type f -path '*/zapret-manager-lt500-*/ZapretManager_LuCI.sh' -print -quit)"
+          test -n "$MANAGER"
+          python3 scripts/lt500/check-panel-installer.py "$MANAGER"
+
 
       - name: Build toolchain, kernel and verify AmneziaWG UDP tunnel prerequisites
         run: |
@@ -255,12 +260,12 @@ jobs:
         run: |
           ROOT="$(find build_dir -maxdepth 3 -type d -name root-ramips -print -quit)"
           test -n "$ROOT"
-          tar -czf bin/targets/ramips/mt76x8/lt500-rc2-rootfs.tar.gz -C "$ROOT" .
+          tar -czf bin/targets/ramips/mt76x8/lt500-rc3-rootfs.tar.gz -C "$ROOT" .
 
       - name: Preserve build outputs for verification recovery
         uses: actions/upload-artifact@v4
         with:
-          name: lt500-rc2-build-candidate
+          name: lt500-rc3-build-candidate
           include-hidden-files: true
           compression-level: 9
           if-no-files-found: error
@@ -315,10 +320,17 @@ jobs:
           done
           grep -q 'proto_config_add_string "awg_i1"' "$ROOT/lib/netifd/proto/amneziawg.sh"
           grep -q 'lt500-panel-update' "$ROOT/usr/libexec/zapret-manager-installer"
-          grep -qx awg2-i1-tun-steer203 "$ROOT/etc/lt500-capabilities"
+          grep -qx awg2-i1-tun-steer205 "$ROOT/etc/lt500-capabilities"
           staging_dir/host/bin/fwtool -i /tmp/image-metadata.json "$IMAGE"
           python3 -c 'import json; m=json.load(open("/tmp/image-metadata.json")); assert "cudy,lt500-v2" in m["supported_devices"]; assert m["version"]["version"] == "23.05.5"'
           python3 scripts/lt500/check-module-abi.py "$ROOT"
+          python3 scripts/lt500/check-panel-installer.py "$ROOT/usr/libexec/zapret-manager-installer"
+          qemu-mipsel-static -L "$ROOT" "$ROOT/usr/sbin/steer" --version
+          grep -Fx 'steer-core - 2.0.5-1' "$MANIFEST"
+          grep -Fx 'zapret-manager-lt500 - 3.43-1' "$MANIFEST"
+          for module in vless hysteria2 proxy xsteer obfs tgws; do
+            grep -Fx "steer-$module - 2.0.5-1" "$MANIFEST"
+          done
 
           echo "===== runtime release and repositories ====="
           grep -Fx "DISTRIB_RELEASE='23.05.5'" "$ROOT/etc/openwrt_release"
@@ -334,32 +346,37 @@ jobs:
           ls -lh "$DIR"
 
       - name: Prepare firmware and independent panel assets
-        run: python3 scripts/lt500/release-assets.py
+        run: |
+          python3 scripts/lt500/release-assets.py
+          python3 scripts/lt500/package-bundle.py bin/targets/ramips/mt76x8/release
+          cd bin/targets/ramips/mt76x8/release
+          sha256sum -c SHA256SUMS
+          sha256sum -c LT500v2-OpenWrt-23.05.5-RC3-zapret-bundle.zip.sha256
 
-      - name: Upload checked RC2 artifacts
+      - name: Upload checked RC3 artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: cudy-lt500v2-openwrt-23.05.5-v2.0-zapret-rc2
+          name: cudy-lt500v2-openwrt-23.05.5-v2.0-zapret-rc3
           if-no-files-found: error
           retention-days: 30
           path: bin/targets/ramips/mt76x8/release/*
 
-      - name: Publish RC2 and compatible panel channel
-        if: github.ref == 'refs/heads/v2.0-zapret-rc2'
+      - name: Publish RC3 and compatible panel channel
+        if: github.ref == 'refs/heads/v2.0-zapret-rc3'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           DIR="bin/targets/ramips/mt76x8/release"
-          TAG="v2.0-zapret-rc2"
-          # Preserve RC1 and refuse to overwrite an already published RC2.
+          TAG="v2.0-zapret-rc3"
+          # Preserve earlier releases and refuse to overwrite a published RC3.
           gh release create "$TAG" --target "$GITHUB_SHA" \
-            --title 'Cudy LT500v2 — OpenWrt 23.05.5 — v2.0-zapret-rc2' \
-            --notes-file "$DIR/INSTALL-RC2.md" --prerelease "$DIR"/*
-          if ! gh release view lt500-panel-stable >/dev/null 2>&1; then
-            gh release create lt500-panel-stable --target "$GITHUB_SHA" \
+            --title 'Cudy LT500v2 — OpenWrt 23.05.5 — v2.0-zapret-rc3' \
+            --notes-file "$DIR/INSTALL-RC3.md" --prerelease "$DIR"/*
+          if ! gh release view lt500-panel-steer205 >/dev/null 2>&1; then
+            gh release create lt500-panel-steer205 --target "$GITHUB_SHA" \
               --title 'Compatible LT500 panel updates' \
               --notes 'Reviewed panel-only packages for LT500 all-in-one firmware. Kernel modules are updated with firmware.' \
               --prerelease
           fi
-          gh release upload lt500-panel-stable --clobber \
+          gh release upload lt500-panel-steer205 --clobber \
             "$DIR/lt500-panel.json" "$DIR"/zapret-manager-lt500_*.ipk

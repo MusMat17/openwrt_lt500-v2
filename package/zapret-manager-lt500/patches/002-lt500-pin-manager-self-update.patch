@@ -1,16 +1,14 @@
 --- a/ZapretManager_LuCI.sh
 +++ b/ZapretManager_LuCI.sh
-@@ -58 +57,0 @@
--	/etc/zapret_manager_expert_mode* \
-@@ -83 +82 @@
+@@ -131 +131 @@
 -ZM_SCRIPT_URL="https://raw.githubusercontent.com/StressOzz/Zapret-Manager/refs/heads/main/ZapretManager_LuCI.sh"
-+ZM_SCRIPT_URL="https://raw.githubusercontent.com/StressOzz/Zapret-Manager/d528728e0351b9fc2ae72997dfcd9d2c74425b6b/ZapretManager_LuCI.sh"
-@@ -4655,0 +4655,4 @@
++ZM_SCRIPT_URL="https://raw.githubusercontent.com/StressOzz/Zapret-Manager/61263e50faeba2461e30d7fcc54f1fdb75ef1e21/ZapretManager_LuCI.sh"
+@@ -5763,0 +5764,4 @@
 +	if [ -f /etc/lt500-allinone ]; then
 +		/usr/libexec/lt500-panel-update status
 +		return $?
 +	fi
-@@ -4693,0 +4697,9 @@
+@@ -5801,0 +5806,9 @@
 +	if [ -f /etc/lt500-allinone ]; then
 +		local busy
 +		if busy="$(_zm_busy_job)"; then
@@ -20,7 +18,7 @@
 +		/usr/libexec/lt500-panel-update update
 +		return $?
 +	fi
-@@ -32133,2 +32145,2 @@
+@@ -43268,2 +43281,2 @@
 -echo "sh <(wget -q -O - https://raw.githubusercontent.com/StressOzz/Zapret-Manager/main/Zapret-Manager.sh)" > /usr/bin/zms; chmod +x /usr/bin/zms
 -echo "sh <(wget -q -O - https://raw.githubusercontent.com/StressOzz/Zapret-Manager/main/ZapretManager_LuCI.sh)" > /usr/bin/zmw; chmod +x /usr/bin/zmw
 +echo "/usr/libexec/lt500-panel-apply" > /usr/bin/zms; chmod +x /usr/bin/zms

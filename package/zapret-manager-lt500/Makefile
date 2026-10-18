@@ -1,13 +1,13 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=zapret-manager-lt500
-PKG_VERSION:=2.48
-PKG_RELEASE:=2
+PKG_VERSION:=3.43
+PKG_RELEASE:=1
 
 PKG_SOURCE_PROTO:=git
 PKG_SOURCE_URL:=https://github.com/StressOzz/Zapret-Manager.git
-PKG_SOURCE_VERSION:=d528728e0351b9fc2ae72997dfcd9d2c74425b6b
-PKG_SOURCE_DATE:=2026-10-06
+PKG_SOURCE_VERSION:=61263e50faeba2461e30d7fcc54f1fdb75ef1e21
+PKG_SOURCE_DATE:=2026-10-18
 PKG_MIRROR_HASH:=skip
 
 PKG_LICENSE:=MIT
@@ -18,7 +18,7 @@ include $(INCLUDE_DIR)/package.mk
 define Package/zapret-manager-lt500
   SECTION:=net
   CATEGORY:=Network
-  TITLE:=Zapret Manager 2.48 independently updatable dashboard for Cudy LT500v2
+  TITLE:=Zapret Manager 3.43 independently updatable dashboard for Cudy LT500v2
   URL:=https://github.com/StressOzz/Zapret-Manager
   DEPENDS:=+luci +curl +unzip +uhttpd-mod-ubus +rpcd +nftables +ip-full +ca-bundle
 endef

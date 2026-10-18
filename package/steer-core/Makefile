@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=steer-core
-PKG_VERSION:=2.0.3
+PKG_VERSION:=2.0.5
 PKG_RELEASE:=1
 
 PKG_LICENSE:=GPL-3.0-only
@@ -13,7 +13,7 @@ include $(INCLUDE_DIR)/package.mk
 define Package/steer-core
   SECTION:=net
   CATEGORY:=Network
-  TITLE:=Steer 2.0.3 policy routing core
+  TITLE:=Steer 2.0.5 policy routing core
   URL:=https://github.com/splify2/steer
   DEPENDS:=+nftables +ip-full +conntrack +kmod-nft-queue
   PROVIDES:=steer
@@ -21,7 +21,7 @@ define Package/steer-core
 endef
 
 define Package/steer-core/description
-  Steer policy-routing core built from the pinned upstream 2.0.3 source.
+  Steer policy-routing core built from the pinned upstream 2.0.5 source.
   Used by Zapret Manager to route selected services through WARP/AWG interfaces.
 endef
 

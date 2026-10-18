@@ -65,10 +65,10 @@ for p in /tmp/zapret-manager-luci/*.pid; do
 		fail 'Wait until the running panel operation finishes'
 	fi
 done
-# The generated dashboard occupies about 1.6 MiB. Reserve space for new files
+# The generated dashboard occupies about 2.4 MiB. Reserve space for new files
 # and one compressed backup; never keep an unbounded backup history.
 FREE="$(df -k /overlay | awk 'NR==2 {print $4}')"
-[ "${FREE:-0}" -ge 2300 ] || fail 'Need at least 2300 KiB free in /overlay for a panel update'
+[ "${FREE:-0}" -ge 3200 ] || fail 'Need at least 3200 KiB free in /overlay for a panel update'
 : > "$LOCK/panel.list"
 for p in $PATHS; do [ ! -e "/$p" ] && [ ! -L "/$p" ] || echo "$p" >> "$LOCK/panel.list"; done
 # Back up settings separately. Restore them only on immediate installation

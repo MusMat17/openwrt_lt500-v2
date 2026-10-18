@@ -7,73 +7,57 @@ This branch is intentionally based on OpenWrt commit:
 which matches the OpenWrt 23.05.5 revision currently installed by Cudy's
 official intermediary firmware (`r24106-10cc5fcd00`).
 
-## v2.0-zapret-rc2 All-in-One
+## v2.0-zapret-rc3 All-in-One
 
-RC2 retains the OpenWrt 23.05.5 / Linux 5.15.167 LT500 hardware base and
-integrates the two add-ons confirmed on the router on 2026-10-07.
+RC3 updates Zapret Manager to **3.43-1** and Steer core and all six modules
+to **2.0.5-1**, retaining the RC2 hardware, Linux 5.15.167, TUN and AmneziaWG
+2.0 I1-I5 support. WAN/4G switching remains manual; no mwan3 is included.
 
-Included:
+Pinned source revisions:
 
-- LTE CDC-ECM, LuCI, curl, unzip and opkg upgrade guard.
-- Zapret 72.20260307 from pinned source feed.
-- Zapret Manager 2.48-2, upstream revision
-  `d528728e0351b9fc2ae72997dfcd9d2c74425b6b`, with LT500 component guards.
-- Steer Core 2.0.3 and all six modules: VLESS, Hysteria2, Proxy, XSteer,
-  Obfs and TGWS. Built together from
-  `81a78be4c26f1a8369a92813fbfbf13f225382ab`.
-- TUN built against the RC2 kernel ABI, not imported from the RC1 archive.
-- AmneziaWG 2.0 kernel source
-  `ae0924ca700520ca34c5bdbcfd05b2f683ea9353` and tools source
-  `61e741780e8465a67a7d7fb6cffe14a8a15d624a`, matching the tested I1 add-on.
-- Netifd and LuCI fields for I1-I5, S3/S4 and range-capable H1-H4.
-- Correct OpenWrt 23.05.5 release metadata and available runtime feeds.
+- Zapret Manager: `61263e50faeba2461e30d7fcc54f1fdb75ef1e21`.
+- Steer 2.0.5: `239c2897a726bc66dbe1900a3f4595d4d9b5f62d`.
+- AmneziaWG kernel: `ae0924ca700520ca34c5bdbcfd05b2f683ea9353`.
+- AmneziaWG tools: `61e741780e8465a67a7d7fb6cffe14a8a15d624a`.
+- Zapret remains 72.20260307 from its pinned feed revision.
 
 ### Independent panel updates
 
-`zapret-manager-lt500` is a kernel-independent IPK. Its post-install hook
-applies the packaged, patched installer using `/usr/libexec/lt500-panel-apply`.
-The dashboard's update action uses `/usr/libexec/lt500-panel-update`, which
-reads the reviewed `lt500-panel-stable` release channel in this repository.
-It validates board, capability, version, fixed asset name and SHA256, then
-installs only the panel package with ordinary opkg dependency checks. It
-never fetches an original upstream panel installer for LT500 self-update.
-The pinned upstream revision remains reviewed explicitly for each future
-panel package. Features requiring a newer kernel need new firmware.
+The panel package retains settings, keeps one compressed previous-panel backup,
+and restores the previous dashboard and immediate settings on installation
+failure. A later manual rollback preserves current tunnel settings and pins
+the previous panel until a different installer is installed. Updates need
+3200 KiB free overlay. Bootstrap detects an older retained dashboard after
+sysupgrade and applies the packaged version without downloading an installer.
 
-The apply helper keeps one private compressed backup, retains settings,
-restores the prior dashboard/settings on installation failure, and supports
-manual rollback while preserving current tunnel settings. Manual rollback
-pins the prior dashboard until a different installer is installed or the
-rollback marker is removed. Panel updates require 2300 KiB free overlay.
-A checksum marker skips repeated installation. The enabled bootstrap and
-uci-defaults migration also replace a preserved RC1 dashboard after upgrade.
-RC2 registers Steer/AWG/panel state in `lib/upgrade/keep.d`; the RC2 release
-instructions register the same paths before upgrading from RC1.
+RC3 uses capability `awg2-i1-tun-steer205` and channel `lt500-panel-steer205`.
+The old RC2 channel is untouched. The updater validates the board, capability,
+version, fixed package filename and SHA256 before ordinary opkg installation.
+New upstream panels must be reviewed and published as compatible LT500 packages.
+Features needing new kernel modules require a matching firmware update.
 
-Zapret and kernel-owned AmneziaWG remain protected against panel package
-replacement/removal. Panel-only updates retain those protections. The
-original RC1 self-update URL pin alone was insufficient; use a reviewed
-LT500 package or newer firmware.
+The actual 3.43 installer is patched to retain the LT500 update action and
+block external AWG installation and Zapret/AWG replacement. Protected firmware
+packages are also retained when a historical owned-package list is cleaned up.
 
-### Validation
+### Validation and installation
 
-Hardware acceptance: the RC1 standalone TUN/VLESS package and the matching
-AmneziaWG I1 fix have both been confirmed working by the user. The combined
-RC2 image needs a separate on-router acceptance test after installation.
+CI checks update/rollback behavior and executes firmware guards from the actual
+patched panel backend before compiling the toolchain. Publication requires
+all six Steer modules at the core version, the expected panel version, metadata
+for the correct board, valid image size, all kmods matching the built kernel ABI,
+and TUN/AWG/UDP prerequisites. The checked ZIP and its external SHA256 are
+published together with the image, panel/Steer IPKs and Russian instructions.
 
-CI checks panel settings retention, installation idempotence, immediate
-failure recovery, manual rollback and board rejection before compilation.
-Publication also requires the full package manifest, all six Steer binary
-payloads, TUN/AWG/UDP modules, exact kernel dependency for every kmod,
-correct board/version metadata, available runtime feeds, and an image below
-the 15872 KiB firmware partition limit. All packages build from pinned
-sources; foreign RC1 kmods are not reused in RC2.
+RC3 is a release candidate and needs its own on-router acceptance test.
+The standalone RC1 TUN/VLESS and AWG I1 fixes were tested by the owner.
+See [RC3 install instructions](docs/LT500v2-RC3-INSTALL-RU.md) for upgrade,
+backup, panel rollback and post-boot checks. Published instructions include the
+actual image size, SHA256 and kernel package version.
 
-RC1 kernel package was `5.15.167-1-78d6c8e3a2943133b1f113a51ed060f5`.
-Its standalone TUN needed a distinct version because opkg merges matching
-local/feed name-version-architecture candidates and could otherwise inherit
-the official ABI `81d2030506bf6ad3027d9c549b1e93da`. RC2 resolves this by
-building TUN and its kernel together. Never install RC1 add-on kmods on RC2.
+Do not install RC1 kmods on RC3. The original RC1 TUN package needed a distinct
+version because opkg can merge same-version local and feed candidates carrying
+different kernel ABI dependencies. RC3 builds TUN and the kernel together.
 
 ## Confirmed hardware
 

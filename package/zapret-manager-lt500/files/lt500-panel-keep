@@ -3,3 +3,5 @@
 /etc/zm-warp-own.conf
 /etc/steer/
 /opt/zapret-manager-luci/state/
+/opt/zapret-manager-luci/dns_net
+/etc/zapret_manager_expert_mode

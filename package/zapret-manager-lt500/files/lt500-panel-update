@@ -2,7 +2,7 @@
 # This channel contains reviewed LT500 panel packages, never upstream scripts.
 set -eu
 umask 077
-BASE=https://github.com/MusMat17/openwrt_lt500-v2/releases/download/lt500-panel-stable
+BASE=https://github.com/MusMat17/openwrt_lt500-v2/releases/download/lt500-panel-steer205
 CURRENT="$(opkg list-installed zapret-manager-lt500 | awk '{print $3}')"
 WORK="$(mktemp -d /tmp/lt500-panel-update.XXXXXX)"
 trap 'rm -rf "$WORK"' EXIT
@@ -28,7 +28,7 @@ j() { jsonfilter -i "$WORK/manifest.json" -e "@.$1"; }
 VERSION="$(j version)" || error
 FILE="$(j file)" || error
 SHA="$(j sha256)" || error
-[ "$(j format)" = 1 ] && [ "$(j board)" = cudy,lt500-v2 ] && [ "$(j capability)" = awg2-i1-tun-steer203 ] || error
+[ "$(j format)" = 1 ] && [ "$(j board)" = cudy,lt500-v2 ] && [ "$(j capability)" = awg2-i1-tun-steer205 ] || error
 printf '%s\n' "$VERSION" | grep -qE '^[0-9]+(\.[0-9]+)*-[0-9]+$' || error
 [ "$FILE" = "zapret-manager-lt500_${VERSION}_mipsel_24kc.ipk" ] || error
 printf '%s\n' "$SHA" | grep -qE '^[0-9a-f]{64}$' || error
@@ -39,7 +39,7 @@ if [ "${1:-status}" = status ]; then
 	exit 0
 fi
 [ "${1:-status}" = update ] || error
-[ "$(cat /tmp/sysinfo/board_name)" = cudy,lt500-v2 ] && grep -qx awg2-i1-tun-steer203 /etc/lt500-capabilities || error
+[ "$(cat /tmp/sysinfo/board_name)" = cudy,lt500-v2 ] && grep -qx awg2-i1-tun-steer205 /etc/lt500-capabilities || error
 [ "$NEWER" = true ] || { echo '{"error":"Совместимая панель уже установлена"}'; exit 1; }
 fetch "$BASE/$FILE" "$WORK/$FILE" 2>>/tmp/lt500-panel-update.log || error
 [ "$(sha256sum "$WORK/$FILE" | awk '{print $1}')" = "$SHA" ] || error

@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=steer-modules
-PKG_VERSION:=2.0.3
+PKG_VERSION:=2.0.5
 PKG_RELEASE:=1
 PKG_LICENSE:=GPL-3.0-only
 PKG_MAINTAINER:=splify2
@@ -19,7 +19,7 @@ define SteerModule
     TITLE:=Steer $(1) module
     URL:=https://github.com/splify2/steer
     DEPENDS:=+steer-core $(2)
-    EXTRA_DEPENDS:=steer-core (=2.0.3-1)
+    EXTRA_DEPENDS:=steer-core (=2.0.5-1)
   endef
   define Package/steer-$(1)/install
 	[ -x ./files/$(1)/usr/sbin/steer-$(1) ] || { echo "Missing staged Steer $(1)" >&2; exit 1; }
