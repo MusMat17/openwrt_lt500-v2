@@ -2,6 +2,7 @@
 """Prepare immutable RC3 firmware, independent packages and install instructions."""
 import hashlib
 import json
+import os
 import pathlib
 import shutil
 import subprocess
@@ -33,7 +34,7 @@ notes = notes.replace('@IMAGE_SHA256@', image_sha).replace('@IMAGE_BYTES@', str(
 for name in ('INSTALL-RC3.md', 'INSTALL-RC3-RU.md'):
     (out / name).write_text(notes)
 source = {'release': 'v2.0-zapret-rc3', 'openwrt': '23.05.5', 'kernel': versions['kernel'],
-          'firmware_sha256': image_sha, 'build_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
+          'firmware_sha256': image_sha, 'build_commit': os.environ.get('LT500_BUILD_COMMIT') or subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
           'manager': {'version': '3.43-1', 'source': '61263e50faeba2461e30d7fcc54f1fdb75ef1e21'},
           'steer': {'version': '2.0.5-1', 'source': '239c2897a726bc66dbe1900a3f4595d4d9b5f62d'}}
 (out / 'BUILD-INFO.json').write_text(json.dumps(source, indent=2) + '\n')

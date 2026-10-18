@@ -26,8 +26,8 @@ permissions:
   contents: write
 
 concurrency:
-  group: lt500-v2-zapret-rc3
-  cancel-in-progress: true
+  group: lt500-v2-zapret-rc3${{ contains(github.event.head_commit.message, '[lt500-verify-only]') && '-checks' || '' }}
+  cancel-in-progress: ${{ !contains(github.event.head_commit.message, '[lt500-verify-only]') }}
 
 jobs:
   build:
@@ -273,6 +273,7 @@ jobs:
           path: |
             bin/targets/ramips/mt76x8/**
             bin/packages/mipsel_24kc/*/zapret-manager-lt500_*.ipk
+            bin/packages/mipsel_24kc/*/steer-*.ipk
             .config
 
       - name: Verify all-in-one image
@@ -325,7 +326,7 @@ jobs:
           python3 -c 'import json; m=json.load(open("/tmp/image-metadata.json")); assert "cudy,lt500-v2" in m["supported_devices"]; assert m["version"]["version"] == "23.05.5"'
           python3 scripts/lt500/check-module-abi.py "$ROOT"
           python3 scripts/lt500/check-panel-installer.py "$ROOT/usr/libexec/zapret-manager-installer"
-          qemu-mipsel-static -L "$ROOT" "$ROOT/usr/sbin/steer" --version
+          qemu-mipsel-static -L "$ROOT" "$ROOT/usr/sbin/steerd" --version
           grep -Fx 'steer-core - 2.0.5-1' "$MANIFEST"
           grep -Fx 'zapret-manager-lt500 - 3.43-1' "$MANIFEST"
           for module in vless hysteria2 proxy xsteer obfs tgws; do
@@ -352,6 +353,11 @@ jobs:
           cd bin/targets/ramips/mt76x8/release
           sha256sum -c SHA256SUMS
           sha256sum -c LT500v2-OpenWrt-23.05.5-RC3-zapret-bundle.zip.sha256
+
+      - name: Validate independent packages with the actual image opkg
+        run: |
+          ROOT="$(find build_dir -maxdepth 3 -type d -name root-ramips -print -quit)"
+          python3 scripts/lt500/check-independent-packages.py "$ROOT" bin/targets/ramips/mt76x8/release
 
       - name: Upload checked RC3 artifacts
         uses: actions/upload-artifact@v4

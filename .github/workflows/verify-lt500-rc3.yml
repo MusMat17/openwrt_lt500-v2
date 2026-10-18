@@ -1,0 +1,194 @@
+name: Verify actual LT500 RC3 image and publish bundle
+'on':
+  workflow_dispatch: null
+  push:
+    branches:
+    - v2.0-zapret-rc3
+    paths:
+    - .github/workflows/verify-lt500-rc3.yml
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: lt500-rc3-publish
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+    - name: Checkout corrected verifier
+      uses: actions/checkout@v4
+    - name: Wait for the existing RC3 build outputs
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |-
+        while [ "$(gh api repos/MusMat17/openwrt_lt500-v2/actions/runs/39117035367 --jq .status)" != completed ]; do
+          echo 'The original RC3 build is still running; keeping its compiled outputs.'
+          sleep 30
+        done
+        ARTIFACT="$(gh api repos/MusMat17/openwrt_lt500-v2/actions/runs/39117035367/artifacts --jq '.artifacts[] | select(.name == "lt500-rc3-build-candidate" and .expired == false) | .id')"
+        test -n "$ARTIFACT" || { echo 'Build did not preserve an RC3 candidate; publication stopped.'; exit 1; }
+    - name: Download preserved RC3 build
+      uses: actions/download-artifact@v4
+      with:
+        name: lt500-rc3-build-candidate
+        run-id: 39117035367
+        github-token: ${{ github.token }}
+    - name: Install userspace emulator and SquashFS tools
+      run: |-
+        sudo apt-get update
+        sudo apt-get install -y qemu-user-static squashfs-tools binutils
+    - name: Verify checksums and extract actual firmware filesystem
+      run: |-
+        cd bin/targets/ramips/mt76x8
+        sha256sum -c sha256sums
+        cd "$GITHUB_WORKSPACE"
+        python3 - <<'PYCHECK'
+        from pathlib import Path
+        import struct
+        image=Path('bin/targets/ramips/mt76x8/openwrt-ramips-mt76x8-cudy_lt500-v2-squashfs-sysupgrade.bin').read_bytes()
+        start=0
+        found=[]
+        while True:
+            offset=image.find(b'hsqs',start)
+            if offset<0:break
+            start=offset+4
+            if len(image)-offset<96:continue
+            major,minor=struct.unpack_from('<HH',image,offset+28)
+            used=struct.unpack_from('<Q',image,offset+40)[0]
+            block=struct.unpack_from('<I',image,offset+12)[0]
+            if major==4 and minor==0 and 96<used<=len(image)-offset and block in (4096,8192,16384,32768,65536,131072,262144,524288,1048576):
+                found.append((offset,used))
+        assert len(found)==1,found
+        offset,used=found[0]
+        Path('actual-rootfs.squashfs').write_bytes(image[offset:offset+used])
+        print(f'Firmware SquashFS: offset={offset}, bytes={used}')
+        PYCHECK
+        unsquashfs -no-progress -d image-rootfs actual-rootfs.squashfs
+    - name: Check panel installation and rollback
+      run: |-
+        python3 scripts/lt500/test-panel-updates.py
+        LT500_TEST_QEMU="$(command -v qemu-mipsel-static)" \
+        LT500_TEST_BUSYBOX="$PWD/image-rootfs/bin/busybox" \
+        LT500_TEST_SYSROOT="$PWD/image-rootfs" \
+        python3 scripts/lt500/test-panel-updates.py
+    - name: Verify all-in-one image
+      run: |
+        DIR="bin/targets/ramips/mt76x8"
+        IMAGE="$DIR/openwrt-ramips-mt76x8-cudy_lt500-v2-squashfs-sysupgrade.bin"
+        MANIFEST="$DIR/openwrt-ramips-mt76x8-cudy_lt500-v2.manifest"
+
+        echo "===== available build outputs ====="
+        ls -lh "$DIR"
+        test -s "$IMAGE" || { echo "Expected sysupgrade image missing: $IMAGE"; exit 1; }
+        test -s "$MANIFEST" || { echo "Expected manifest missing: $MANIFEST"; exit 1; }
+
+        echo "===== image ====="
+        ls -lh "$IMAGE"
+        sha256sum "$IMAGE"
+
+        SIZE="$(stat -c%s "$IMAGE")"
+        MAX="$((15872 * 1024))"
+        echo "image_bytes=$SIZE max_bytes=$MAX"
+        [ "$SIZE" -le "$MAX" ] || { echo "Image exceeds LT500 firmware partition"; exit 1; }
+
+        echo "===== required packages ====="
+        for p in \
+          curl unzip zapret \
+          kmod-nft-queue kmod-nft-nat kmod-nft-offload \
+          kmod-iptunnel kmod-udptunnel4 kmod-udptunnel6 \
+          kmod-amneziawg amneziawg-tools luci-proto-amneziawg \
+          kmod-tun steer-core steer-vless steer-hysteria2 steer-proxy steer-xsteer steer-obfs steer-tgws zapret-manager-lt500
+        do
+          grep -q "^$p " "$MANIFEST" || { echo "Package missing from image: $p"; exit 1; }
+          grep "^$p " "$MANIFEST"
+        done
+
+        ROOT=image-rootfs
+        test -n "$ROOT"
+        test -x "$ROOT/usr/sbin/steer"
+        test -x "$ROOT/usr/bin/awg"
+        test -x "$ROOT/opt/zapret/nfq/nfqws"
+        test -x "$ROOT/usr/libexec/zapret-manager-installer"
+        test -x "$ROOT/usr/libexec/lt500-panel-apply"
+        test -x "$ROOT/usr/libexec/lt500-panel-update"
+        for module in vless hysteria2 proxy xsteer obfs tgws; do
+          test -x "$ROOT/usr/sbin/steer-$module"
+        done
+        grep -q 'proto_config_add_string "awg_i1"' "$ROOT/lib/netifd/proto/amneziawg.sh"
+        grep -q 'lt500-panel-update' "$ROOT/usr/libexec/zapret-manager-installer"
+        grep -qx awg2-i1-tun-steer205 "$ROOT/etc/lt500-capabilities"
+        qemu-mipsel-static -L "$ROOT" "$ROOT/usr/bin/fwtool" -i /tmp/image-metadata.json "$IMAGE"
+        python3 -c 'import json; m=json.load(open("/tmp/image-metadata.json")); assert "cudy,lt500-v2" in m["supported_devices"]; assert m["version"]["version"] == "23.05.5"'
+        python3 scripts/lt500/check-module-abi.py "$ROOT"
+        python3 scripts/lt500/check-panel-installer.py "$ROOT/usr/libexec/zapret-manager-installer"
+        qemu-mipsel-static -L "$ROOT" "$ROOT/usr/sbin/steerd" --version
+        grep -Fx 'steer-core - 2.0.5-1' "$MANIFEST"
+        grep -Fx 'zapret-manager-lt500 - 3.43-1' "$MANIFEST"
+        for module in vless hysteria2 proxy xsteer obfs tgws; do
+          grep -Fx "steer-$module - 2.0.5-1" "$MANIFEST"
+        done
+
+        echo "===== runtime release and repositories ====="
+        grep -Fx "DISTRIB_RELEASE='23.05.5'" "$ROOT/etc/openwrt_release"
+        FEEDS="$ROOT/etc/opkg/distfeeds.conf"
+        cat "$FEEDS"
+        grep -Fx 'src/gz openwrt_base https://downloads.openwrt.org/releases/23.05.5/packages/mipsel_24kc/base' "$FEEDS"
+        if grep -Eq '23\.05-SNAPSHOT|/packages/mipsel_24kc/(amneziawg|zapret)(/|$)' "$FEEDS"; then
+          echo "Image contains unavailable runtime repositories"
+          exit 1
+        fi
+
+        echo "===== target files ====="
+        ls -lh "$DIR"
+    - name: Recover standalone Steer IPKs from the verified image
+      run: |-
+        # The first candidate archive retained the firmware and panel IPK.
+        # Recover the optional userspace IPKs byte-for-byte from installed file lists;
+        # this does not rebuild or change the firmware or any kernel module.
+        python3 scripts/lt500/package-steer-from-rootfs.py image-rootfs bin/packages/mipsel_24kc/lt500-recovered
+    - name: Prepare firmware and independent packages
+      env:
+        LT500_BUILD_COMMIT: a8ae6418536b15d57acfc2f73bfc4a40f8403962
+      run: |
+        python3 scripts/lt500/release-assets.py
+        python3 scripts/lt500/package-bundle.py bin/targets/ramips/mt76x8/release
+        cd bin/targets/ramips/mt76x8/release
+        sha256sum -c SHA256SUMS
+        sha256sum -c LT500v2-OpenWrt-23.05.5-RC3-zapret-bundle.zip.sha256
+    - name: Validate all independent IPKs with the actual image opkg
+      run: python3 scripts/lt500/check-independent-packages.py image-rootfs bin/targets/ramips/mt76x8/release
+    - name: Upload checked RC3 artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: cudy-lt500v2-openwrt-23.05.5-v2.0-zapret-rc3
+        if-no-files-found: error
+        retention-days: 30
+        path: bin/targets/ramips/mt76x8/release/*
+    - name: Publish RC3 and compatible panel channel
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        DIR="bin/targets/ramips/mt76x8/release"
+        TAG="v2.0-zapret-rc3"
+        # Preserve earlier releases and refuse to overwrite a published RC3.
+        if gh release view "$TAG" >/dev/null 2>&1; then
+          mkdir -p /tmp/lt500-already-published
+          gh release download "$TAG" --pattern 'Cudy-LT500v2-OpenWrt-23.05.5-v2.0-zapret-rc3-sysupgrade.bin' --dir /tmp/lt500-already-published
+          cmp "$DIR/Cudy-LT500v2-OpenWrt-23.05.5-v2.0-zapret-rc3-sysupgrade.bin" /tmp/lt500-already-published/Cudy-LT500v2-OpenWrt-23.05.5-v2.0-zapret-rc3-sysupgrade.bin
+          gh release view "$TAG" --json assets --jq '.assets[].name' | grep -Fx 'LT500v2-OpenWrt-23.05.5-RC3-zapret-bundle.zip'
+          echo 'The same checked firmware is already published; existing release assets retained.'
+        else
+          gh release create "$TAG" --target "$GITHUB_SHA" \
+            --title 'Cudy LT500v2 — OpenWrt 23.05.5 — v2.0-zapret-rc3' \
+            --notes-file "$DIR/INSTALL-RC3.md" --prerelease "$DIR"/*
+        fi
+        if ! gh release view lt500-panel-steer205 >/dev/null 2>&1; then
+          gh release create lt500-panel-steer205 --target "$GITHUB_SHA" \
+            --title 'Compatible LT500 panel updates' \
+            --notes 'Reviewed panel-only packages for LT500 all-in-one firmware. Kernel modules are updated with firmware.' \
+            --prerelease
+        fi
+        gh release upload lt500-panel-steer205 --clobber \
+          "$DIR/lt500-panel.json" "$DIR"/zapret-manager-lt500_*.ipk
