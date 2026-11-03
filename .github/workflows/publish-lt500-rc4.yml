@@ -1,0 +1,56 @@
+name: Publish verified LT500 RC4 without recompiling
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - v2.0-zapret-rc4
+    paths:
+      - '.github/workflows/publish-lt500-rc4.yml'
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: lt500-rc4-release
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify preserved build provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(gh api repos/MusMat17/openwrt_lt500-v2/actions/runs/41567238180 --jq .head_sha)" = ffc82b07ef7241907b64bfdffba00681b4d43b76
+      - name: Download checked firmware and packages
+        uses: actions/download-artifact@v4
+        with:
+          name: cudy-lt500v2-openwrt-23.05.5-v2.0-zapret-rc4
+          run-id: 41567238180
+          github-token: ${{ github.token }}
+          path: bin/targets/ramips/mt76x8/release
+      - name: Verify original checksums and ZIP
+        run: |
+          cd bin/targets/ramips/mt76x8/release
+          sha256sum -c SHA256SUMS
+          sha256sum -c LT500v2-OpenWrt-23.05.5-RC4-zapret-bundle.zip.sha256
+          echo '775f6ace1830a4bcd43150ae71271f4c1922ed9813e0ac41f0bfdcdec763cb39  Cudy-LT500v2-OpenWrt-23.05.5-v2.0-zapret-rc4-sysupgrade.bin' | sha256sum -c -
+          python3 - <<'PY'
+          import hashlib, pathlib, zipfile
+          root=pathlib.Path('.')
+          with zipfile.ZipFile('LT500v2-OpenWrt-23.05.5-RC4-zapret-bundle.zip') as z:
+              assert z.testzip() is None
+              assert len(z.namelist()) == 16
+              for name in z.namelist():
+                  assert pathlib.Path(name).name == name
+                  assert z.read(name) == (root/name).read_bytes(), name
+          print('Original firmware, all package checksums and ZIP bytes verified')
+          PY
+      - name: Publish verified draft, verify downloads and retire RC3
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LT500_BUILD_COMMIT: ffc82b07ef7241907b64bfdffba00681b4d43b76
+        run: |
+          python3 -m py_compile scripts/lt500/publish-release.py
+          python3 scripts/lt500/publish-release.py
