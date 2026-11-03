@@ -10,7 +10,7 @@ PATHS='opt/zapret-manager-luci
 usr/libexec/rpcd/zapret-manager
 usr/share/luci/menu.d/luci-app-zapret-manager.json
 usr/share/rpcd/acl.d/luci-app-zapret-manager.json
-usr/share/zm-redbtn/services.conf
+usr/share/zm-redbtn
 www/luci-static/resources/view/zapret-manager
 www/luci-static/resources/zapret-manager
 www/luci-static/resources/bytetube
@@ -65,7 +65,7 @@ for p in /tmp/zapret-manager-luci/*.pid; do
 		fail 'Wait until the running panel operation finishes'
 	fi
 done
-# The generated dashboard occupies about 2.4 MiB. Reserve space for new files
+# The generated dashboard occupies about 3.6 MiB before JFFS2 compression. Reserve space for new files
 # and one compressed backup; never keep an unbounded backup history.
 FREE="$(df -k /overlay | awk 'NR==2 {print $4}')"
 [ "${FREE:-0}" -ge 3200 ] || fail 'Need at least 3200 KiB free in /overlay for a panel update'

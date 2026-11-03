@@ -7,12 +7,12 @@ import sys
 import tempfile
 
 installer = pathlib.Path(sys.argv[1]).read_text()
-assert '# Version: 3.43\n' in installer
-assert '61263e50faeba2461e30d7fcc54f1fdb75ef1e21/ZapretManager_LuCI.sh' in installer
+assert '# Version: 4.996\n' in installer
+assert '171791b26e3959de50b800a7c80365fc2b7f3fce/ZapretManager_LuCI.sh' in installer
 subprocess.run(['sh', '-n', sys.argv[1]], check=True)
-match = re.search(r"cat > '/opt/zapret-manager-luci/backend.sh.zm-new' << 'ZM_INSTALLER_EOF'\n(.*?)\nZM_INSTALLER_EOF\n", installer, re.S)
+match = re.search(r"sed .*? << 'ZM_INSTALLER_EOF'\n(.*?)\nZM_INSTALLER_EOF\n", installer, re.S)
 assert match, 'Generated panel backend missing'
-backend = match.group(1).replace('@ZM_VERSION@', '3.43') + '\n'
+backend = match.group(1).replace('@ZM_VERSION@', '4.996') + '\n'
 
 def function(name):
     # These selected functions end with an unindented closing brace.
@@ -66,4 +66,4 @@ _st_install_awg update
     marker.unlink()
     run('_lt500_pinned_pkg kmod-tun', 1)
 
-print('Panel 3.43: installer/backend syntax, firmware package guards and compatible update dispatch passed')
+print('Panel 4.996: installer/backend syntax, firmware package guards and compatible update dispatch passed')

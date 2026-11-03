@@ -1,10 +1,10 @@
-name: Build LT500 v2.0-zapret-rc3 All-in-One
+name: Build LT500 v2.0-zapret-rc4 All-in-One
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - v2.0-zapret-rc3
+      - v2.0-zapret-rc4
     paths:
       - 'target/linux/ramips/**'
       - 'package/system/opkg/**'
@@ -26,7 +26,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: lt500-v2-zapret-rc3${{ contains(github.event.head_commit.message, '[lt500-verify-only]') && '-checks' || '' }}
+  group: lt500-v2-zapret-rc4${{ contains(github.event.head_commit.message, '[lt500-verify-only]') && '-checks' || '' }}
   cancel-in-progress: ${{ !contains(github.event.head_commit.message, '[lt500-verify-only]') }}
 
 jobs:
@@ -49,7 +49,7 @@ jobs:
             build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
             gettext git libncurses-dev libssl-dev python3-setuptools rsync swig \
             unzip zlib1g-dev file wget curl libelf-dev python3 python3-distutils \
-            xz-utils zstd ca-certificates binutils qemu-user-static
+            xz-utils zstd ca-certificates binutils qemu-user-static nodejs
 
       - name: Build pinned Steer 2.0.5 for mipsel_24kc
         run: |
@@ -92,7 +92,7 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Configure LT500 v2.0-zapret-rc3
+      - name: Configure LT500 v2.0-zapret-rc4
         run: |
           cat > .config <<'EOF'
           CONFIG_TARGET_ramips=y
@@ -179,6 +179,7 @@ jobs:
           MANAGER="$(find build_dir -type f -path '*/zapret-manager-lt500-*/ZapretManager_LuCI.sh' -print -quit)"
           test -n "$MANAGER"
           python3 scripts/lt500/check-panel-installer.py "$MANAGER"
+          python3 scripts/lt500/check-panel-payloads.py "$MANAGER"
 
 
       - name: Build toolchain, kernel and verify AmneziaWG UDP tunnel prerequisites
@@ -260,12 +261,12 @@ jobs:
         run: |
           ROOT="$(find build_dir -maxdepth 3 -type d -name root-ramips -print -quit)"
           test -n "$ROOT"
-          tar -czf bin/targets/ramips/mt76x8/lt500-rc3-rootfs.tar.gz -C "$ROOT" .
+          tar -czf bin/targets/ramips/mt76x8/lt500-rc4-rootfs.tar.gz -C "$ROOT" .
 
       - name: Preserve build outputs for verification recovery
         uses: actions/upload-artifact@v4
         with:
-          name: lt500-rc3-build-candidate
+          name: lt500-rc4-build-candidate
           include-hidden-files: true
           compression-level: 9
           if-no-files-found: error
@@ -321,14 +322,15 @@ jobs:
           done
           grep -q 'proto_config_add_string "awg_i1"' "$ROOT/lib/netifd/proto/amneziawg.sh"
           grep -q 'lt500-panel-update' "$ROOT/usr/libexec/zapret-manager-installer"
-          grep -qx awg2-i1-tun-steer205 "$ROOT/etc/lt500-capabilities"
+          grep -qx awg2-i1-tun-steer205-panel4 "$ROOT/etc/lt500-capabilities"
           staging_dir/host/bin/fwtool -i /tmp/image-metadata.json "$IMAGE"
           python3 -c 'import json; m=json.load(open("/tmp/image-metadata.json")); assert "cudy,lt500-v2" in m["supported_devices"]; assert m["version"]["version"] == "23.05.5"'
           python3 scripts/lt500/check-module-abi.py "$ROOT"
           python3 scripts/lt500/check-panel-installer.py "$ROOT/usr/libexec/zapret-manager-installer"
+          LT500_TEST_BUSYBOX="$PWD/$ROOT/bin/busybox" LT500_TEST_QEMU="$(command -v qemu-mipsel-static)" LT500_TEST_SYSROOT="$PWD/$ROOT" python3 scripts/lt500/test-panel-updates.py
           qemu-mipsel-static -L "$ROOT" "$ROOT/usr/sbin/steerd" --version
           grep -Fx 'steer-core - 2.0.5-1' "$MANIFEST"
-          grep -Fx 'zapret-manager-lt500 - 3.43-1' "$MANIFEST"
+          grep -Fx 'zapret-manager-lt500 - 4.996-1' "$MANIFEST"
           for module in vless hysteria2 proxy xsteer obfs tgws; do
             grep -Fx "steer-$module - 2.0.5-1" "$MANIFEST"
           done
@@ -352,37 +354,23 @@ jobs:
           python3 scripts/lt500/package-bundle.py bin/targets/ramips/mt76x8/release
           cd bin/targets/ramips/mt76x8/release
           sha256sum -c SHA256SUMS
-          sha256sum -c LT500v2-OpenWrt-23.05.5-RC3-zapret-bundle.zip.sha256
+          sha256sum -c LT500v2-OpenWrt-23.05.5-RC4-zapret-bundle.zip.sha256
 
       - name: Validate independent packages with the actual image opkg
         run: |
           ROOT="$(find build_dir -maxdepth 3 -type d -name root-ramips -print -quit)"
           python3 scripts/lt500/check-independent-packages.py "$ROOT" bin/targets/ramips/mt76x8/release
 
-      - name: Upload checked RC3 artifacts
+      - name: Upload checked RC4 artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: cudy-lt500v2-openwrt-23.05.5-v2.0-zapret-rc3
+          name: cudy-lt500v2-openwrt-23.05.5-v2.0-zapret-rc4
           if-no-files-found: error
           retention-days: 30
           path: bin/targets/ramips/mt76x8/release/*
 
-      - name: Publish RC3 and compatible panel channel
-        if: github.ref == 'refs/heads/v2.0-zapret-rc3'
+      - name: Publish checked RC4 and retire RC3 only after remote verification
+        if: github.ref == 'refs/heads/v2.0-zapret-rc4'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          DIR="bin/targets/ramips/mt76x8/release"
-          TAG="v2.0-zapret-rc3"
-          # Preserve earlier releases and refuse to overwrite a published RC3.
-          gh release create "$TAG" --target "$GITHUB_SHA" \
-            --title 'Cudy LT500v2 — OpenWrt 23.05.5 — v2.0-zapret-rc3' \
-            --notes-file "$DIR/INSTALL-RC3.md" --prerelease "$DIR"/*
-          if ! gh release view lt500-panel-steer205 >/dev/null 2>&1; then
-            gh release create lt500-panel-steer205 --target "$GITHUB_SHA" \
-              --title 'Compatible LT500 panel updates' \
-              --notes 'Reviewed panel-only packages for LT500 all-in-one firmware. Kernel modules are updated with firmware.' \
-              --prerelease
-          fi
-          gh release upload lt500-panel-steer205 --clobber \
-            "$DIR/lt500-panel.json" "$DIR"/zapret-manager-lt500_*.ipk
+        run: python3 scripts/lt500/publish-release.py
