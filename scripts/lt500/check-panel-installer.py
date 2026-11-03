@@ -31,10 +31,15 @@ with tempfile.TemporaryDirectory(prefix='lt500-panel-guards-') as d:
     updater.write_text('#!/bin/sh\nprintf "compatible-%s\\n" "$1"\n')
     updater.chmod(0o755)
     names = ('_lt500_pinned_pkg', '_zm_pkg_purge', 'zapret_action',
-             'awg_action', '_st_install_awg', 'zm_update_status', 'zm_update_action')
+             'awg_action', '_st_install_awg', 'zm_update_status', 'zm_update_action',
+             'do_install_zapret', 'do_remove_zapret', 'do_awg_remove',
+             '_pg_remove', '_pg_sweep', '_awg_kmod_manual_rm', '_zm_update_fetch', 'do_zm_update')
     functions = '\n'.join(function(n) for n in names)
     functions = functions.replace('/etc/lt500-allinone', str(marker))
     functions = functions.replace('/usr/libexec/lt500-panel-update', str(updater))
+    packaged = root / 'installer'
+    packaged.write_text(installer)
+    functions = functions.replace('/usr/libexec/zapret-manager-installer', str(packaged))
     mocks = '''
 _st_awg_loaded() { return 1; }
 _awg_proto_ok() { return 0; }
@@ -57,6 +62,16 @@ _zm_busy_job() { return 1; }
     assert 'внешний kmod не устанавливаем' in run('_st_install_awg', 1)
     assert run('zm_update_status', 0).strip() == 'compatible-status'
     assert run('zm_update_action', 0).strip() == 'compatible-update'
+    for worker in ('do_install_zapret', 'do_remove_zapret', 'do_awg_remove'):
+        assert 'LT500v2' in run(worker, 1)
+    for worker in ('_pg_remove', '_pg_sweep'):
+        for component in ('zapret', 'awg'):
+            assert 'LT500v2' in run(f'{worker} {component}', 1)
+    run('_awg_kmod_manual_rm', 0)
+    restored = root / 'restored-installer'
+    run(f'_zm_update_fetch {restored}', 0)
+    assert restored.read_text() == installer
+    assert run('do_zm_update', 0).strip() == 'compatible-update'
     # An existing built-in AWG must succeed without fetching any packages.
     assert 'AmneziaWG' in run('''
 _st_awg_loaded() { return 0; }
@@ -66,4 +81,4 @@ _st_install_awg update
     marker.unlink()
     run('_lt500_pinned_pkg kmod-tun', 1)
 
-print('Panel 4.996: installer/backend syntax, firmware package guards and compatible update dispatch passed')
+print('Panel 4.996: installer/backend syntax, firmware worker/purge guards, packaged page recovery and compatible update dispatch passed')

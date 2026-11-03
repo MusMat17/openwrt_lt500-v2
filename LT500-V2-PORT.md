@@ -37,8 +37,9 @@ New upstream panels must be reviewed and published as compatible LT500 packages.
 Features needing new kernel modules require a matching firmware update.
 
 The actual 4.996 installer is patched to retain the LT500 update action and
-block external AWG installation and Zapret/AWG replacement. Protected firmware
-packages are also retained when a historical owned-package list is cleaned up.
+block external AWG installation and Zapret/AWG replacement. Direct worker and selective-purge paths are protected as well; page restoration
+uses the packaged installer, and every self-update path uses the compatible channel.
+Protected firmware packages are also retained when a historical owned-package list is cleaned up.
 
 ### Validation and installation
 

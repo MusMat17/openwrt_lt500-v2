@@ -2,6 +2,7 @@
 """Publish the checked RC4 files, verify remote bytes, then retire only RC3's release."""
 import hashlib
 import json
+import os
 import pathlib
 import subprocess
 import tempfile
@@ -17,12 +18,14 @@ def gh(*args):
 def release(tag):
     return json.loads(gh('api', f'repos/{REPO}/releases/tags/{tag}'))
 
+build_sha = json.loads((ROOT / 'BUILD-INFO.json').read_text())['build_commit']
+assert build_sha == os.environ['GITHUB_SHA'], 'Publication commit must match the actual build commit'
 files = sorted(p for p in ROOT.iterdir() if p.is_file())
 assert len(files) == 18, [p.name for p in files]
 try:
     current = release(TAG)
 except subprocess.CalledProcessError:
-    gh('release', 'create', TAG, '--target', gh('api', f'repos/{REPO}/git/ref/heads/{TAG}', '--jq', '.object.sha').strip(),
+    gh('release', 'create', TAG, '--target', build_sha,
        '--title', 'Cudy LT500v2 — OpenWrt 23.05.5 — v2.0-zapret-rc4',
        '--notes-file', ROOT / 'INSTALL-RC4.md', '--draft', '--prerelease', *files)
     current = release(TAG)

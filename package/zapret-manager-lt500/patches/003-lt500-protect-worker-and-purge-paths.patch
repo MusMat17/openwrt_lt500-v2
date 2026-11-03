@@ -1,0 +1,85 @@
+--- a/ZapretManager_LuCI.sh
++++ b/ZapretManager_LuCI.sh
+@@ -2361,6 +2361,10 @@
+ }
+ 
+ do_install_zapret() {
++	if [ -f /etc/lt500-allinone ]; then
++		echo "ОШИБКА: LT500v2: встроенные Zapret и AmneziaWG обновляются и удаляются вместе с firmware"
++		return 1
++	fi
+ 	local rc
+ 	_nochange_save zapret /opt/zapret/ipset "$CONF"
+ 	_do_install_zapret_core; rc=$?
+@@ -2400,6 +2404,10 @@
+ }
+ 
+ do_remove_zapret() {
++	if [ -f /etc/lt500-allinone ]; then
++		echo "ОШИБКА: LT500v2: встроенные Zapret и AmneziaWG обновляются и удаляются вместе с firmware"
++		return 1
++	fi
+ 	local rc=0
+ 	echo "==> Останавливаем Zapret"
+ 	_zm_svc_off zapret
+@@ -5484,6 +5492,9 @@
+ 	printf '{"items":[%s],"busy":"%s"}\n' "$out" "$(esc "$(_zm_busy_job)")"
+ }
+ _pg_sweep() {
++	if [ -f /etc/lt500-allinone ]; then
++		case "$1" in zapret|awg) echo "ОШИБКА: LT500v2: компонент закреплён в firmware"; return 1 ;; esac
++	fi
+ 	local t f d n=0 cfg
+ 	for t in $(_pg_trace "$1"); do
+ 		case "$t" in
+@@ -5499,6 +5510,9 @@
+ 	PG_SWEPT="$n"
+ }
+ _pg_remove() {
++	if [ -f /etc/lt500-allinone ]; then
++		case "$1" in zapret|awg) echo "ОШИБКА: LT500v2: компонент закреплён в firmware"; return 1 ;; esac
++	fi
+ 	_zm_after_remove() { :; }
+ 	_zm_rm_done() {
+ 		if [ "$1" = 0 ]; then echo "==> Готово: $2 удалён полностью, остатков нет"
+@@ -10495,6 +10509,10 @@
+ }
+ 
+ _zm_update_fetch() {
++	if [ -f /etc/lt500-allinone ]; then
++		cp /usr/libexec/zapret-manager-installer "$1"
++		return $?
++	fi
+ 	rm -f "$1"
+ 	_zm_gh_get "$ZM_SCRIPT_URL" "$1" || { echo "не удалось скачать установщик с GitHub — ни напрямую, ни через WARP"; return 1; }
+ 	head -n1 "$1" | grep -qx '#!/bin/sh' || { echo "скачанный файл не похож на установщик (возможно, вместо него пришла страница-заглушка)"; return 1; }
+@@ -10544,6 +10562,10 @@
+ }
+ 
+ do_zm_update() {
++	if [ -f /etc/lt500-allinone ]; then
++		/usr/libexec/lt500-panel-update update
++		return $?
++	fi
+ 	local tmp="/tmp/zm_update_install.sh" why v
+ 	echo "==> Скачиваем новую версию панели с GitHub"
+ 	if ! why="$(_zm_update_fetch "$tmp")"; then
+@@ -16956,6 +16978,7 @@
+ 	fi
+ }
+ _awg_kmod_manual_rm() {
++	[ ! -f /etc/lt500-allinone ] || return 0
+ 	[ -f "$AWG_KMOD_MANUAL" ] || return 0
+ 	rm -f "/lib/modules/$(uname -r)/amneziawg.ko" "$AWG_KMOD_MANUAL"
+ }
+@@ -22247,6 +22270,10 @@
+ }
+ 
+ do_awg_remove() {
++	if [ -f /etc/lt500-allinone ]; then
++		echo "ОШИБКА: LT500v2: встроенные Zapret и AmneziaWG обновляются и удаляются вместе с firmware"
++		return 1
++	fi
+ 	local p i all="$1" used="" left="" rc=0
+ 	echo remove > "$AWG_RUN/phase"
+ 	for i in $(_awg_ifaces); do
