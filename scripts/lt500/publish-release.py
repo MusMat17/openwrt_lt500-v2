@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Publish the checked RC4 files, verify remote bytes, then retire only RC3's release."""
+"""Publish the checked RC5 files, verify remote bytes, preserving earlier releases."""
 import hashlib
 import json
 import os
@@ -8,8 +8,8 @@ import subprocess
 import tempfile
 
 REPO = 'MusMat17/openwrt_lt500-v2'
-TAG = 'v2.0-zapret-rc4'
-CHANNEL = 'lt500-panel-steer205-v4'
+TAG = 'v2.0-zapret-rc5'
+CHANNEL = 'lt500-panel-steer213-noradio'
 ROOT = pathlib.Path('bin/targets/ramips/mt76x8/release').resolve()
 
 def gh(*args):
@@ -28,13 +28,13 @@ def release(tag):
 build_sha = json.loads((ROOT / 'BUILD-INFO.json').read_text())['build_commit']
 assert build_sha == os.environ.get('LT500_BUILD_COMMIT', os.environ['GITHUB_SHA']), 'Publication commit must match the actual build commit'
 files = sorted(p for p in ROOT.iterdir() if p.is_file())
-assert len(files) == 18, [p.name for p in files]
+assert len(files) == 12, [p.name for p in files]
 try:
     current = release(TAG)
 except ReleaseMissing:
     gh('release', 'create', TAG, '--target', build_sha,
-       '--title', 'Cudy LT500v2 — OpenWrt 23.05.5 — v2.0-zapret-rc4',
-       '--notes-file', ROOT / 'INSTALL-RC4.md', '--draft', '--prerelease', *files)
+       '--title', 'Cudy LT500v2 — OpenWrt 23.05.5 — v2.0-zapret-rc5',
+       '--notes-file', ROOT / 'INSTALL-RC5.md', '--draft', '--prerelease', *files)
     current = release(TAG)
 assert current['tag_name'] == TAG
 # Verify every published asset, including the independent packages and ZIP.
@@ -53,7 +53,7 @@ def verify_remote():
         assert hashlib.sha256(downloaded).hexdigest() == checksum, p.name
         if asset.get('digest'):
             assert asset['digest'] == 'sha256:' + checksum, p.name
-    print(f'All {len(files)} remote RC4 assets match the checked build byte-for-byte', flush=True)
+    print(f'All {len(files)} remote RC5 assets match the checked build byte-for-byte', flush=True)
 
 verify_remote()
 if current['draft']:
@@ -61,27 +61,18 @@ if current['draft']:
        '-F', 'draft=false', '-F', 'prerelease=true', '-f', 'make_latest=false')
 assert not release(TAG)['draft']
 verify_remote()
-# Do not change RC2/RC3 panel channels: their installed updaters rely on them.
+# Do not change earlier panel channels: their installed updaters rely on them.
 try:
     release(CHANNEL)
 except ReleaseMissing:
     gh('release', 'create', CHANNEL, '--target', TAG,
-       '--title', 'Compatible LT500 panel 4.x updates', '--prerelease', '--latest=false',
-       '--notes', 'Reviewed panel-only packages for LT500 RC4 with Steer 2.0.5. Kernel modules update with firmware.')
+       '--title', 'Compatible LT500 panel 5.x updates (no radio)', '--prerelease', '--latest=false',
+       '--notes', 'Reviewed panel-only packages for LT500 RC5 with Steer 2.1.3. Kernel modules update with firmware.')
 gh('release', 'upload', CHANNEL, '--clobber', ROOT / 'lt500-panel.json',
-   ROOT / 'zapret-manager-lt500_4.996-1_mipsel_24kc.ipk')
-with tempfile.TemporaryDirectory(prefix='lt500-rc4-channel-') as d:
+   ROOT / 'zapret-manager-lt500_5.064-1_mipsel_24kc.ipk')
+with tempfile.TemporaryDirectory(prefix='lt500-rc5-channel-') as d:
     gh('release', 'download', CHANNEL, '--dir', d)
-    for name in ('lt500-panel.json', 'zapret-manager-lt500_4.996-1_mipsel_24kc.ipk'):
+    for name in ('lt500-panel.json', 'zapret-manager-lt500_5.064-1_mipsel_24kc.ipk'):
         assert (pathlib.Path(d) / name).read_bytes() == (ROOT / name).read_bytes(), name
-print('RC4 published and compatible panel channel verified', flush=True)
-# Explicit user instruction: remove RC3 only after successful RC4 publication.
-try:
-    previous = release('v2.0-zapret-rc3')
-except ReleaseMissing:
-    print('RC3 release is already absent; no other release is touched', flush=True)
-else:
-    assert previous['id'] == 416393647 and previous['tag_name'] == 'v2.0-zapret-rc3' and previous['prerelease']
-    gh('release', 'delete', 'v2.0-zapret-rc3', '--yes')
-    print('RC3 release removed after verification; source tag and older stable releases retained', flush=True)
+print('RC5 published and compatible panel channel verified', flush=True)
 print(f'https://github.com/{REPO}/releases/tag/{TAG}', flush=True)

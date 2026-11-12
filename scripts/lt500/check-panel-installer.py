@@ -7,12 +7,17 @@ import sys
 import tempfile
 
 installer = pathlib.Path(sys.argv[1]).read_text()
-assert '# Version: 4.996\n' in installer
-assert '171791b26e3959de50b800a7c80365fc2b7f3fce/ZapretManager_LuCI.sh' in installer
+assert '# Version: 5.064\n' in installer
+assert 'be2baf3db38dcefafc104a5460fe5829315ab514/ZapretManager_LuCI.sh' in installer
 subprocess.run(['sh', '-n', sys.argv[1]], check=True)
-match = re.search(r"sed .*? << 'ZM_INSTALLER_EOF'\n(.*?)\nZM_INSTALLER_EOF\n", installer, re.S)
-assert match, 'Generated panel backend missing'
-backend = match.group(1).replace('@ZM_VERSION@', '4.996') + '\n'
+# New panels split the backend into lazily loaded shell modules.
+blocks = []
+for match in re.finditer(r"<< 'ZM_INSTALLER_EOF'\n(.*?)\nZM_INSTALLER_EOF\n", installer, re.S):
+    body = match.group(1)
+    if body.startswith('#!/bin/sh') or re.search(r'^[_a-zA-Z][_a-zA-Z0-9]*\(\) \{', body, re.M):
+        blocks.append(body.replace('@ZM_VERSION@', '5.064'))
+assert len(blocks) >= 19, 'Generated modular backend missing'
+backend = '\n'.join(blocks) + '\n'
 
 def function(name):
     # These selected functions end with an unindented closing brace.
@@ -81,4 +86,4 @@ _st_install_awg update
     marker.unlink()
     run('_lt500_pinned_pkg kmod-tun', 1)
 
-print('Panel 4.996: installer/backend syntax, firmware worker/purge guards, packaged page recovery and compatible update dispatch passed')
+print('Panel 5.064: installer/backend syntax, firmware worker/purge guards, packaged page recovery and compatible update dispatch passed')

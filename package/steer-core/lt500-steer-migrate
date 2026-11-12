@@ -1,0 +1,13 @@
+#!/bin/sh
+# sysupgrade restores the spec but does not run the old core package's preinst.
+# Install only the plugins required by that spec before the daemon starts.
+set -eu
+STATE=/etc/steer/plugins/lt500-migration.sha256
+[ -f /etc/steer/spec.json ] || [ -f /etc/steer/spec.yaml ] ||
+    [ -f /etc/steer/plugins/migrate.json ] || exit 0
+EXPECTED="$(sha256sum /usr/sbin/steerd | awk '{print $1}')"
+[ "$(cat "$STATE" 2>/dev/null || true)" != "$EXPECTED" ] || exit 0
+/usr/sbin/steerd plugin migrate >/tmp/lt500-steer-migrate.log 2>&1
+mkdir -p /etc/steer/plugins
+printf '%s\n' "$EXPECTED" > "$STATE.new"
+mv "$STATE.new" "$STATE"

@@ -1,10 +1,10 @@
-name: Build LT500 v2.0-zapret-rc4 All-in-One
+name: Build LT500 v2.0-zapret-rc5 All-in-One
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - v2.0-zapret-rc4
+      - v2.0-zapret-rc5
     paths:
       - 'target/linux/ramips/**'
       - 'package/system/opkg/**'
@@ -26,7 +26,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: lt500-v2-zapret-rc4${{ contains(github.event.head_commit.message, '[lt500-verify-only]') && '-checks' || '' }}
+  group: lt500-v2-zapret-rc5${{ contains(github.event.head_commit.message, '[lt500-verify-only]') && '-checks' || '' }}
   cancel-in-progress: ${{ !contains(github.event.head_commit.message, '[lt500-verify-only]') }}
 
 jobs:
@@ -49,50 +49,20 @@ jobs:
             build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
             gettext git libncurses-dev libssl-dev python3-setuptools rsync swig \
             unzip zlib1g-dev file wget curl libelf-dev python3 python3-distutils \
-            xz-utils zstd ca-certificates binutils qemu-user-static nodejs
+            xz-utils zstd ca-certificates binutils qemu-user-static nodejs squashfs-tools
 
-      - name: Build pinned Steer 2.0.5 for mipsel_24kc
-        run: |
-          rm -rf /tmp/steer /tmp/steer-ipk
-          git clone https://github.com/splify2/steer.git /tmp/steer
-          git -C /tmp/steer checkout 239c2897a726bc66dbe1900a3f4595d4d9b5f62d
+      - name: Stage official Steer 2.1.3 with matching signed plugins
+        run: python3 scripts/lt500/stage-steer.py
 
-          cd /tmp/steer
-          STEER_ARCH=mipsel_24kc ./build.sh
-
-          IPK="$(find "$PWD/out" -maxdepth 1 -type f -name 'steer-core-2.0.5-1_mipsel_24kc.ipk' -print -quit)"
-          test -n "$IPK"
-          ls -lh "$IPK"
-
-          # build.sh leaves the exact package payload in build/pkg/mipsel_24kc.
-          # Copy that tree directly instead of assuming a particular .ipk container format.
-          PAYLOAD="$PWD/build/pkg/mipsel_24kc"
-          test -d "$PAYLOAD/usr"
-          rm -rf "$GITHUB_WORKSPACE/package/steer-core/files"
-          mkdir -p "$GITHUB_WORKSPACE/package/steer-core/files"
-          cp -a "$PAYLOAD"/. "$GITHUB_WORKSPACE/package/steer-core/files"/
-
-          test -x "$GITHUB_WORKSPACE/package/steer-core/files/usr/sbin/steer"
-          test -x "$GITHUB_WORKSPACE/package/steer-core/files/usr/sbin/steerd"
-          test -x "$GITHUB_WORKSPACE/package/steer-core/files/etc/init.d/steer"
-          for module in vless hysteria2 proxy xsteer obfs tgws; do
-            MODULE_SRC="$PWD/build/pkg/mipsel_24kc-$module"
-            MODULE_DST="$GITHUB_WORKSPACE/package/steer-modules/files/$module"
-            test -x "$MODULE_SRC/usr/sbin/steer-$module"
-            mkdir -p "$MODULE_DST"
-            cp -a "$MODULE_SRC"/. "$MODULE_DST"/
-          done
-
-          echo "===== Steer payload ====="
-          du -sh "$GITHUB_WORKSPACE/package/steer-core/files"
-          find "$GITHUB_WORKSPACE/package/steer-core/files" -type f -maxdepth 5 | sort
+      - name: Test signed plugin migration on actual RC4 userspace
+        run: sudo -E python3 scripts/lt500/test-steer-migration.py
 
       - name: Update and install feeds
         run: |
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Configure LT500 v2.0-zapret-rc4
+      - name: Configure LT500 v2.0-zapret-rc5
         run: |
           cat > .config <<'EOF'
           CONFIG_TARGET_ramips=y
@@ -110,12 +80,6 @@ jobs:
           CONFIG_PACKAGE_luci-proto-amneziawg=y
           CONFIG_PACKAGE_steer-core=y
           CONFIG_PACKAGE_kmod-tun=y
-          CONFIG_PACKAGE_steer-vless=y
-          CONFIG_PACKAGE_steer-hysteria2=y
-          CONFIG_PACKAGE_steer-proxy=y
-          CONFIG_PACKAGE_steer-xsteer=y
-          CONFIG_PACKAGE_steer-obfs=y
-          CONFIG_PACKAGE_steer-tgws=y
           CONFIG_PACKAGE_zapret-manager-lt500=y
           CONFIG_IMAGEOPT=y
           CONFIG_VERSIONOPT=y
@@ -146,12 +110,6 @@ jobs:
             CONFIG_PACKAGE_luci-proto-amneziawg \
             CONFIG_PACKAGE_steer-core \
             CONFIG_PACKAGE_kmod-tun \
-            CONFIG_PACKAGE_steer-vless \
-            CONFIG_PACKAGE_steer-hysteria2 \
-            CONFIG_PACKAGE_steer-proxy \
-            CONFIG_PACKAGE_steer-xsteer \
-            CONFIG_PACKAGE_steer-obfs \
-            CONFIG_PACKAGE_steer-tgws \
             CONFIG_PACKAGE_zapret-manager-lt500
           do
             grep -q "^$sym=y" .config || { echo "Missing $sym"; exit 1; }
@@ -261,12 +219,12 @@ jobs:
         run: |
           ROOT="$(find build_dir -maxdepth 3 -type d -name root-ramips -print -quit)"
           test -n "$ROOT"
-          tar -czf bin/targets/ramips/mt76x8/lt500-rc4-rootfs.tar.gz -C "$ROOT" .
+          tar -czf bin/targets/ramips/mt76x8/lt500-rc5-rootfs.tar.gz -C "$ROOT" .
 
       - name: Preserve build outputs for verification recovery
         uses: actions/upload-artifact@v4
         with:
-          name: lt500-rc4-build-candidate
+          name: lt500-rc5-build-candidate
           include-hidden-files: true
           compression-level: 9
           if-no-files-found: error
@@ -303,7 +261,7 @@ jobs:
             kmod-nft-queue kmod-nft-nat kmod-nft-offload \
             kmod-iptunnel kmod-udptunnel4 kmod-udptunnel6 \
             kmod-amneziawg amneziawg-tools luci-proto-amneziawg \
-            kmod-tun steer-core steer-vless steer-hysteria2 steer-proxy steer-xsteer steer-obfs steer-tgws zapret-manager-lt500
+            kmod-tun steer-core zapret-manager-lt500
           do
             grep -q "^$p " "$MANIFEST" || { echo "Package missing from image: $p"; exit 1; }
             grep "^$p " "$MANIFEST"
@@ -317,24 +275,19 @@ jobs:
           test -x "$ROOT/usr/libexec/zapret-manager-installer"
           test -x "$ROOT/usr/libexec/lt500-panel-apply"
           test -x "$ROOT/usr/libexec/lt500-panel-update"
-          for module in vless hysteria2 proxy xsteer obfs tgws; do
-            test -x "$ROOT/usr/sbin/steer-$module"
-          done
+          test -s "$ROOT/usr/share/steer/seed/index.json.sig"
+          test -x "$ROOT/usr/libexec/lt500-steer-migrate"
           grep -q 'proto_config_add_string "awg_i1"' "$ROOT/lib/netifd/proto/amneziawg.sh"
           grep -q 'lt500-panel-update' "$ROOT/usr/libexec/zapret-manager-installer"
-          grep -qx awg2-i1-tun-steer205-panel4 "$ROOT/etc/lt500-capabilities"
+          grep -qx awg2-i1-tun-steer213-panel5-noradio "$ROOT/etc/lt500-capabilities"
           staging_dir/host/bin/fwtool -i /tmp/image-metadata.json "$IMAGE"
           python3 -c 'import json; m=json.load(open("/tmp/image-metadata.json")); assert "cudy,lt500-v2" in m["supported_devices"]; assert m["version"]["version"] == "23.05.5"'
           python3 scripts/lt500/check-module-abi.py "$ROOT"
           python3 scripts/lt500/check-panel-installer.py "$ROOT/usr/libexec/zapret-manager-installer"
           LT500_TEST_BUSYBOX="$PWD/$ROOT/bin/busybox" LT500_TEST_QEMU="$(command -v qemu-mipsel-static)" LT500_TEST_SYSROOT="$PWD/$ROOT" python3 scripts/lt500/test-panel-updates.py
           qemu-mipsel-static -L "$ROOT" "$ROOT/usr/sbin/steerd" --version
-          grep -Fx 'steer-core - 2.0.5-1' "$MANIFEST"
-          grep -Fx 'zapret-manager-lt500 - 4.996-1' "$MANIFEST"
-          for module in vless hysteria2 proxy xsteer obfs tgws; do
-            grep -Fx "steer-$module - 2.0.5-1" "$MANIFEST"
-          done
-
+          grep -Fx 'steer-core - 2.1.3-1' "$MANIFEST"
+          grep -Fx 'zapret-manager-lt500 - 5.064-1' "$MANIFEST"
           echo "===== runtime release and repositories ====="
           grep -Fx "DISTRIB_RELEASE='23.05.5'" "$ROOT/etc/openwrt_release"
           FEEDS="$ROOT/etc/opkg/distfeeds.conf"
@@ -354,23 +307,23 @@ jobs:
           python3 scripts/lt500/package-bundle.py bin/targets/ramips/mt76x8/release
           cd bin/targets/ramips/mt76x8/release
           sha256sum -c SHA256SUMS
-          sha256sum -c LT500v2-OpenWrt-23.05.5-RC4-zapret-bundle.zip.sha256
+          sha256sum -c LT500v2-OpenWrt-23.05.5-RC5-zapret-bundle.zip.sha256
 
       - name: Validate independent packages with the actual image opkg
         run: |
           ROOT="$(find build_dir -maxdepth 3 -type d -name root-ramips -print -quit)"
           python3 scripts/lt500/check-independent-packages.py "$ROOT" bin/targets/ramips/mt76x8/release
 
-      - name: Upload checked RC4 artifacts
+      - name: Upload checked RC5 artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: cudy-lt500v2-openwrt-23.05.5-v2.0-zapret-rc4
+          name: cudy-lt500v2-openwrt-23.05.5-v2.0-zapret-rc5
           if-no-files-found: error
           retention-days: 30
           path: bin/targets/ramips/mt76x8/release/*
 
-      - name: Publish checked RC4 and retire RC3 only after remote verification
-        if: github.ref == 'refs/heads/v2.0-zapret-rc4'
+      - name: Publish checked RC5 after remote verification
+        if: github.ref == 'refs/heads/v2.0-zapret-rc5'
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/lt500/publish-release.py

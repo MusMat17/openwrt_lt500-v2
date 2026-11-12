@@ -65,7 +65,7 @@ for p in /tmp/zapret-manager-luci/*.pid; do
 		fail 'Wait until the running panel operation finishes'
 	fi
 done
-# The generated dashboard occupies about 3.6 MiB before JFFS2 compression. Reserve space for new files
+# The generated dashboard occupies about 4.1 MiB before JFFS2 compression. Reserve space for new files
 # and one compressed backup; never keep an unbounded backup history.
 FREE="$(df -k /overlay | awk 'NR==2 {print $4}')"
 [ "${FREE:-0}" -ge 3200 ] || fail 'Need at least 3200 KiB free in /overlay for a panel update'
@@ -86,6 +86,7 @@ if "$INSTALLER" && sh -n /opt/zapret-manager-luci/backend.sh &&
    [ -s /www/zm/app.js ]; then
 	printf '%s\n' "$EXPECTED" > "$STATE/installed.sha256.new"
 	mv "$STATE/installed.sha256.new" "$STATE/installed.sha256"
+	rm -f /opt/zapret-manager-luci/state/ui.radio
 	echo 'LT500 panel installed. Backup: /root/lt500-panel-backup/previous.tar.gz'
 else
 	tar -xzf "$LOCK/settings.tar.gz" -C /

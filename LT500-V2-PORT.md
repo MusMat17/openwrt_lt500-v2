@@ -7,58 +7,50 @@ This branch is intentionally based on OpenWrt commit:
 which matches the OpenWrt 23.05.5 revision currently installed by Cudy's
 official intermediary firmware (`r24106-10cc5fcd00`).
 
-## v2.0-zapret-rc4 All-in-One
+## v2.0-zapret-rc5 All-in-One
 
-RC4 updates Zapret Manager to **4.996-1** and includes the latest published
-stable Steer core and all six modules at **2.0.5-1**, retaining the RC2 hardware, Linux 5.15.167, TUN and AmneziaWG
-2.0 I1-I5 support. WAN/4G switching remains manual; no mwan3 is included.
+RC5 includes Zapret Manager **5.064-1** without the radio feature and official
+Steer **2.1.3-1** with its matching signed protocol seed and trust keys, including
+net1 **1.4.3**. It retains the tested RC2 hardware configuration, Linux 5.15.167,
+TUN and AmneziaWG 2.0 I1-I5. WAN/4G switching remains manual.
 
-Pinned source revisions:
+Pinned sources:
 
-- Zapret Manager: `171791b26e3959de50b800a7c80365fc2b7f3fce`.
-- Steer 2.0.5: `239c2897a726bc66dbe1900a3f4595d4d9b5f62d`.
-- AmneziaWG kernel: `ae0924ca700520ca34c5bdbcfd05b2f683ea9353`.
-- AmneziaWG tools: `61e741780e8465a67a7d7fb6cffe14a8a15d624a`.
-- Zapret remains 72.20260307 from its pinned feed revision.
+- Manager: `be2baf3db38dcefafc104a5460fe5829315ab514`.
+- Steer: `9e05393b9747f4f85cd1ede38e34d03c6583b187`.
+- Official Steer IPK SHA256: `81a290efe633fc09a96bbb0d3808473c581290d61a28faac0ac22ad3c7297a3e`.
+- AWG kernel: `ae0924ca700520ca34c5bdbcfd05b2f683ea9353`.
+- AWG tools: `61e741780e8465a67a7d7fb6cffe14a8a15d624a`.
+- Zapret: 72.20260307 from the retained pinned feed.
 
-### Independent panel updates
+### Protocols and migration
 
-The panel package retains settings, keeps one compressed previous-panel backup,
-and restores the previous dashboard and immediate settings on installation
-failure. A later manual rollback preserves current tunnel settings and pins
-the previous panel until a different installer is installed. Updates need
-3200 KiB free overlay. Bootstrap detects an older retained dashboard after
-sysupgrade and applies the packaged version without downloading an installer.
+Steer 2.1 uses signed `.s2p` plugins rather than six separate protocol IPKs.
+The official core binary, libraries, seed and trust keys are kept together.
+The firmware adds one first-start migration hook before steerd: an existing
+spec selects required plugins, with the signed offline seed as fallback.
+Fresh installs without a spec defer optional plugin installation to the panel.
+TGWS is outside the upstream seed and needs an online signed plugin install.
+The standalone release asset is the original official IPK, byte-for-byte.
 
-RC4 uses capability `awg2-i1-tun-steer205-panel4` and channel `lt500-panel-steer205-v4`.
-The old RC2 and RC3 panel channels are untouched. The updater validates the board, capability,
-version, fixed package filename and SHA256 before ordinary opkg installation.
-New upstream panels must be reviewed and published as compatible LT500 packages.
-Features needing new kernel modules require a matching firmware update.
+### Panel updates and validation
 
-The actual 4.996 installer is patched to retain the LT500 update action and
-block external AWG installation and Zapret/AWG replacement. Direct worker and selective-purge paths are protected as well; page restoration
-uses the packaged installer, and every self-update path uses the compatible channel.
-Protected firmware packages are also retained when a historical owned-package list is cleaned up.
+Radio code, backend methods, station catalog, audio player and CSS are physically
+removed (about 58 KB uncompressed). Wi-Fi is unaffected. The panel uses capability
+`awg2-i1-tun-steer213-panel5-noradio` and channel `lt500-panel-steer213-noradio`.
+Earlier channels and firmware releases remain untouched. Panel updates retain
+settings and one compressed previous-panel backup, restore on installation
+failure and support `/usr/libexec/lt500-panel-apply rollback`. They require
+3200 KiB free overlay. Future panels need LT500 review and radio removal before
+publication to the compatible channel; new kernel dependencies need firmware.
 
-### Validation and installation
-
-CI checks update/rollback behavior and executes firmware guards from the actual
-patched panel backend before compiling the toolchain. Publication requires
-all six Steer modules at the core version, the expected panel version, metadata
-for the correct board, valid image size, all kmods matching the built kernel ABI,
-and TUN/AWG/UDP prerequisites. The checked ZIP and its external SHA256 are
-published together with the image, panel/Steer IPKs and Russian instructions.
-
-RC4 is a release candidate and needs its own on-router acceptance test.
-The standalone RC1 TUN/VLESS and AWG I1 fixes were tested by the owner.
-See [RC4 install instructions](docs/LT500v2-RC4-INSTALL-RU.md) for upgrade,
-backup, panel rollback and post-boot checks. Published instructions include the
-actual image size, SHA256 and kernel package version.
-
-Do not install RC1 kmods on RC4. The original RC1 TUN package needed a distinct
-version because opkg can merge same-version local and feed candidates carrying
-different kernel ABI dependencies. RC4 builds TUN and the kernel together.
+CI checks all 57 generated panel payloads, firmware-owned package protections,
+update/rollback, official plugin signatures and dependencies under MIPS emulation
+on RC4 userspace before compilation. Final checks cover image metadata and size,
+all kernel-module ABIs, TUN/AWG/UDP symbols, package versions and standalone IPKs
+using the image's own opkg. Published assets are downloaded and hash-verified.
+RC5 still needs on-router acceptance for boot, LTE, VLESS and WARP.
+See [RC5 installation instructions](docs/LT500v2-RC5-INSTALL-RU.md).
 
 ## Confirmed hardware
 

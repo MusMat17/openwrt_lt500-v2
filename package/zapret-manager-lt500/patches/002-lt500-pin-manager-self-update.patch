@@ -1,15 +1,15 @@
 --- a/ZapretManager_LuCI.sh
 +++ b/ZapretManager_LuCI.sh
-@@ -138,7 +138,7 @@
+@@ -143,7 +143,7 @@
  
  CONF="/etc/config/zapret"
  ZM_VERSION="@ZM_VERSION@"
 -ZM_SCRIPT_URL="https://raw.githubusercontent.com/StressOzz/Zapret-Manager/refs/heads/main/ZapretManager_LuCI.sh"
-+ZM_SCRIPT_URL="https://raw.githubusercontent.com/StressOzz/Zapret-Manager/171791b26e3959de50b800a7c80365fc2b7f3fce/ZapretManager_LuCI.sh"
++ZM_SCRIPT_URL="https://raw.githubusercontent.com/StressOzz/Zapret-Manager/be2baf3db38dcefafc104a5460fe5829315ab514/ZapretManager_LuCI.sh"
  ZM_STATS_URL="http://89.191.225.101:8787"
  ZM_STATS_OFF="/etc/zapret-manager.nostats"
  ZM_STATS_IDF="/etc/zapret-manager.id"
-@@ -10418,6 +10418,10 @@
+@@ -4863,6 +4863,10 @@
  }
  
  zm_update_status() {
@@ -20,7 +20,7 @@
  	local latest
  	if [ -z "$ZM_VER_FORCE" ] && [ "$(_ver_mode)" != open ]; then latest="$(ZM_VER_LOCAL=1 _zm_cached_first panel _zm_panel_latest)"
  	else latest="$(_zm_cached_first panel _zm_panel_latest)"; fi
-@@ -10522,6 +10526,15 @@
+@@ -12553,6 +12557,15 @@
  }
  
  zm_update_action() {
@@ -36,7 +36,7 @@
  	local j
  	if j="$(_zm_busy_job)"; then
  		printf '{"error":"%s"}\n' "$(esc "идёт операция «$j» — дождитесь её окончания и обновите панель")"
-@@ -64372,27 +64385,9 @@
+@@ -74033,24 +74046,9 @@
  ZMW_IP="$(/opt/zapret-manager-luci/backend.sh lan_ip 2>/dev/null || true)"
  [ -n "$ZMW_IP" ] || ZMW_IP="192.168.1.1"
  
@@ -47,17 +47,14 @@
 -ZM_GET_EOF
 -	cat >> "/usr/bin/${_zm_c%% *}" <<'ZM_GET_EOF'
 -t="/tmp/zm-get.$$.sh"
--get() { rm -f "$t"; if command -v curl >/dev/null 2>&1; then curl -fsSL --connect-timeout 10 --max-time 120 -o "$t" "$1"; else wget -q -O "$t" "$1"; fi && [ -s "$t" ] && ! head -c 512 "$t" | grep -qiE '<(!doctype|html)'; }
--if get "$u"; then :; else
--	ok=""; ms="$(/opt/zapret-manager-luci/backend.sh gh_mirrors 2>/dev/null)"
--	[ -n "$ms" ] && echo "GitHub не ответил напрямую — пробуем зеркала"
--	for m in $ms; do
--		echo "  · $m…"
--		get "https://$m/$u" && { echo "  ✓ Скачано через $m"; ok=1; break; }
--		echo "  · $m не отдал файл"
--	done
--	[ -n "$ok" ] || { rm -f "$t"; echo "Не удалось скачать $u${ms:+ — ни напрямую, ни через зеркала}"; exit 1; }
--fi
+-b=/opt/zapret-manager-luci/backend.sh
+-get() { rm -f "$t"; if command -v curl >/dev/null 2>&1; then curl -fsSL --connect-timeout 5 --max-time 60 -o "$t" "$1"; else wget -q -T 30 -O "$t" "$1"; fi && [ -s "$t" ] && ! head -c 512 "$t" | grep -qiE '<(!doctype|html)'; }
+-if [ -x "$b" ]; then
+-	: > "$t.log"
+-	e="$(ZM_JOB_LOG="$t.log" "$b" gh_get "$u" "$t" 120 2>&1 >/dev/null)"; r=$?
+-	cat "$t.log" 2>/dev/null; rm -f "$t.log"
+-	[ "$r" = 0 ] || { rm -f "$t"; [ -n "$e" ] && echo "$e"; echo "Не удалось скачать $u"; exit 1; }
+-elif ! get "$u"; then rm -f "$t"; echo "Не удалось скачать $u"; exit 1; fi
 -sh "$t"; r=$?; rm -f "$t"; exit $r
 -ZM_GET_EOF
 -	chmod +x "/usr/bin/${_zm_c%% *}"
@@ -66,4 +63,4 @@
 +	chmod +x "/usr/bin/$_zm_c"
  done
  ( /opt/zapret-manager-luci/backend.sh zm_stats_hit ) >/dev/null 2>&1 </dev/null &
- if [ -x /etc/init.d/uhttpd ]; then
+ _zm_login_restart() {

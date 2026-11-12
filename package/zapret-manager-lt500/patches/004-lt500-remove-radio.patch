@@ -1,0 +1,1429 @@
+--- a/ZapretManager_LuCI.sh
++++ b/ZapretManager_LuCI.sh
+@@ -2081,115 +2081,6 @@
+ 	printf '{"ok":true}\n'
+ }
+ 
+-UI_RADIO_FILE="$ZM_STATE_DIR/ui.radio"
+-_ui_radio_id() { printf '%s' "$1" | grep -qxE '[a-z0-9_]{1,32}'; }
+-_ui_radio_fav() { [ "${#1}" -le 2000 ] && printf '%s' "$1" | grep -qxE '[a-z0-9_]{1,32}(,[a-z0-9_]{1,32})*'; }
+-ui_radio_get() {
+-	local st="" vol="" show="" prev="" fav=""
+-	[ -s "$UI_RADIO_FILE" ] && read -r st vol show prev fav < "$UI_RADIO_FILE"
+-	_ui_radio_id "$st" || st=""
+-	case "$vol" in ''|*[!0-9]*) vol=70 ;; esac
+-	[ "$vol" -le 100 ] 2>/dev/null || vol=100
+-	[ "$show" = 0 ] || show=1
+-	_ui_radio_id "$prev" || prev=""
+-	_ui_radio_fav "$fav" && fav="\"$(printf '%s' "$fav" | sed 's/,/","/g')\"" || fav=""
+-	printf '{"station":"%s","volume":%s,"show":%s,"prev":"%s","fav":[%s]}\n' "$st" "$vol" "$([ "$show" = 1 ] && echo true || echo false)" "$prev" "$fav"
+-}
+-ui_radio_set() {
+-	local st vol show prev fav x ost ovol oshow oprev ofav
+-	read -r st vol show prev fav x <<EOF_ZMR
+-$1
+-EOF_ZMR
+-	_ui_radio_id "$st" || { echo '{"error":"неверная станция"}'; return 1; }
+-	case "$vol" in ''|*[!0-9]*) echo '{"error":"неверная громкость"}'; return 1 ;; esac
+-	[ "$vol" -le 100 ] || { echo '{"error":"неверная громкость"}'; return 1; }
+-	case "$show" in 0|1) ;; *) echo '{"error":"неверный параметр"}'; return 1 ;; esac
+-	if [ -z "$prev" ]; then
+-		[ -s "$UI_RADIO_FILE" ] && read -r ost ovol oshow oprev ofav < "$UI_RADIO_FILE"
+-		prev="${oprev:--}"; fav="${ofav:--}"
+-	fi
+-	[ "$prev" = - ] || _ui_radio_id "$prev" || prev=-
+-	[ -n "$fav" ] || fav=-
+-	[ "$fav" = - ] || _ui_radio_fav "$fav" || { echo '{"error":"неверный список избранного"}'; return 1; }
+-	mkdir -p "$ZM_STATE_DIR"
+-	printf '%s %s %s %s %s\n' "$st" "$vol" "$show" "$prev" "$fav" > "$UI_RADIO_FILE.zm" && mv -f "$UI_RADIO_FILE.zm" "$UI_RADIO_FILE"
+-	ui_radio_get
+-}
+-
+-UI_ICY_DIR="/tmp/.zm-radio-icy"
+-_ui_icy_age() { local t; t="$(date -r "$1" +%s 2>/dev/null)" || { echo 99999; return; }; echo $(( $(date +%s) - t )); }
+-_ui_icy_byte() { if _zm_has hexdump; then hexdump -v -e '1/1 "%u"'; else od -An -v -tu1 | tr -d ' \n'; fi; }
+-_ui_icy_hex() { if _zm_has hexdump; then hexdump -v -e '1/1 "%02x"'; else od -An -v -tx1 | tr -d ' \n'; fi; }
+-_ui_icy_url() {
+-	case "$1" in
+-		o_europa) echo "https://ep256.hostingradio.ru:8052/europaplus256.mp3" ;;
+-		o_rusradio) echo "https://rusradio.hostingradio.ru/rusradio96.aacp" ;;
+-		o_hitfm) echo "https://hitfm.hostingradio.ru/hitfm96.aacp" ;;
+-		o_novoe) echo "http://icecast.newradio.cdnvideo.ru/newradio3" ;;
+-		o_dfm) echo "https://dfm.hostingradio.ru/dfm96.aacp" ;;
+-		o_dfmclub) echo "https://dfm-dfmclub.hostingradio.ru/dfmclub96.aacp" ;;
+-		o_dfmrus) echo "https://dfm-dfmrusdance.hostingradio.ru/dfmrusdance96.aacp" ;;
+-		o_clubcz) echo "http://radio.ipip.cz:7996/" ;;
+-		o_retro) echo "https://retro128.streamr.ru/" ;;
+-		o_avto) echo "http://ic4.101.ru:8000/stream/air/aac/64/100" ;;
+-		o_nashe) echo "http://nashe128.streamr.ru" ;;
+-		o_maximum) echo "http://nashe2.hostingradio.ru/rock-128.mp3" ;;
+-		o_rockarsenal) echo "https://online.rockarsenal.ru/rockarsenal_aacplus" ;;
+-		o_shokolad) echo "https://choco.hostingradio.ru:10010/fm" ;;
+-		o_jazz24) echo "https://knkx-live-a.edge.audiocdn.com/6285_256k" ;;
+-		z_pop|z_club|z_rock|z_disco|z_shanson|z_rus|z_rnb|z_relax|z_zaychata|z_kpop|z_rap|z_metal|z_bass|z_love|z_rurock|z_folk|z_classic) echo "https://abs.zaycev.fm/${1#z_}256k" ;;
+-		o_*) return 1 ;;
+-		*) echo "https://radiorecord.hostingradio.ru/$1.aacp" ;;
+-	esac
+-}
+-_ui_icy_dl() {
+-	local p="$1" f="$UI_ICY_DIR/$1" b="$UI_ICY_DIR/$1.$$" n l k sz off u
+-	if ! mkdir "$f.lock" 2>/dev/null; then
+-		[ "$(_ui_icy_age "$f.lock")" -ge 30 ] || return 0
+-		rm -rf "$f.lock"; mkdir "$f.lock" 2>/dev/null || return 0
+-	fi
+-	: > "$f.try"
+-	u="$(_ui_icy_url "$p")" || u=""
+-	if [ -z "$u" ]; then : > "$f"
+-	elif _zm_has curl; then
+-		command curl -sSL --max-redirs 3 --connect-timeout 5 --max-time 8 -A 'Mozilla/5.0' -H 'Icy-MetaData: 1' -D "$b.h" \
+-			"$u" 2>/dev/null | head -c 40000 > "$b.bin"
+-		n="$(grep -i '^icy-metaint:' "$b.h" 2>/dev/null | head -n 1 | tr -dc '0-9' | head -c 6)"
+-		sz="$(wc -c 2>/dev/null < "$b.bin" | tr -d ' ')"
+-		if [ -n "$n" ] && [ "$n" -gt 0 ] 2>/dev/null; then
+-			off=0
+-			for k in 1 2; do
+-				off=$((off + n))
+-				[ "${sz:-0}" -gt "$off" ] || break
+-				l="$(tail -c +$((off + 1)) "$b.bin" | head -c 1 | _ui_icy_byte)"
+-				case "$l" in ''|*[!0-9]*) break ;; esac
+-				if [ "$l" -gt 0 ]; then
+-					[ "$sz" -ge $((off + 1 + l * 16)) ] || break
+-					tail -c +$((off + 2)) "$b.bin" | head -c $((l * 16)) | tr -d '\000' | _ui_icy_hex > "$b.t"
+-					mv -f "$b.t" "$f"
+-					break
+-				fi
+-				off=$((off + 1))
+-			done
+-		elif [ -s "$b.h" ] && [ "${sz:-0}" -gt 0 ]; then
+-			: > "$f"
+-		fi
+-	fi
+-	rm -f "$b.h" "$b.bin" "$b.t"
+-	rmdir "$f.lock" 2>/dev/null
+-	return 0
+-}
+-ui_radio_now() {
+-	local p="$1" f t
+-	printf '%s' "$p" | grep -qE '^[a-z0-9_]{1,32}$' || { echo '{"error":"неверная станция"}'; return 1; }
+-	f="$UI_ICY_DIR/$p"
+-	mkdir -p "$UI_ICY_DIR"
+-	if [ "$(_ui_icy_age "$f")" -ge 12 ] && [ "$(_ui_icy_age "$f.try")" -ge 12 ]; then _ui_icy_dl "$p"; fi
+-	if [ ! -f "$f" ] || [ "$(_ui_icy_age "$f")" -ge 120 ]; then printf '{"ok":false,"title":""}\n'; return 0; fi
+-	t="$(head -c 8200 "$f" | tr -dc '0-9a-f')"
+-	printf '{"ok":true,"title":"%s"}\n' "$t"
+-}
+-
+ ZM_PEND_DIR="$JOBS_DIR/pend"
+ ZM_PEND_RKN="/opt/zapret/ipset/.zm-pend-rkn"
+ _pend_list() {
+@@ -8916,9 +8807,6 @@
+ 	terms_get)                            terms_get ;;
+ 	terms_accept)                         terms_accept ;;
+ 	ui_flag_set)                          ui_flag_set "$1" ;;
+-	ui_radio_get)                         ui_radio_get ;;
+-	ui_radio_set)                         ui_radio_set "$1" ;;
+-	ui_radio_now)                         ui_radio_now "$1" ;;
+ 	adblock_dns_sync)                     _ab_dns_sync ;;
+ 	dns_presets_migrate)                  dns_presets_migrate ;;
+ 	zapret_doh_migrate)                   [ -f "$ZO_DOH_FLAG" ] && [ -f "$CONF" ] && _zo_doh_stale && { _zo_doh_follow; echo '{"changed":true}'; } || echo '{"changed":false}' ;;
+@@ -40598,9 +40486,6 @@
+ 	json_add_object "terms_get";              json_close_object
+ 	json_add_object "terms_accept";           json_close_object
+ 	json_add_object "ui_flag_set";            json_add_string "name" "string"; json_close_object
+-	json_add_object "ui_radio_get";           json_close_object
+-	json_add_object "ui_radio_set";           json_add_string "mode" "string"; json_close_object
+-	json_add_object "ui_radio_now";           json_add_string "mode" "string"; json_close_object
+ 	json_add_object "monitor";                json_close_object
+ 	json_add_object "ui_net_get";             json_close_object
+ 	json_add_object "monitor_procs";          json_close_object
+@@ -40803,9 +40688,6 @@
+ 		terms_get)               "$BACKEND" terms_get ;;
+ 		terms_accept)            "$BACKEND" terms_accept ;;
+ 		ui_flag_set)             json_get_var name name;       "$BACKEND" ui_flag_set "$name" ;;
+-		ui_radio_get)            "$BACKEND" ui_radio_get ;;
+-		ui_radio_set)            json_get_var mode mode;       "$BACKEND" ui_radio_set "$mode" ;;
+-		ui_radio_now)            json_get_var mode mode;       "$BACKEND" ui_radio_now "$mode" ;;
+ 		*) echo '{"error":"unknown method"}'; return 1 ;;
+ 	esac
+ }
+@@ -40891,8 +40773,6 @@
+ 					"sysinfo_get",
+ 					"ui_flags_get",
+ 					"terms_get",
+-					"ui_radio_get",
+-					"ui_radio_now",
+ 					"events",
+ 					"zram_status",
+ 					"owrt_status"
+@@ -41001,7 +40881,6 @@
+ 					"ui_nav_set",
+ 					"ui_flag_set",
+ 					"terms_accept",
+-					"ui_radio_set",
+ 					"versions_mode",
+ 					"system_reboot",
+ 					"reboot_hint_clear",
+@@ -67708,71 +67587,66 @@
+ }
+ 
+ var ICONS = {
+-	dashboard: '<rect x="3" y="3" width="7.5" height="9" rx="2"/><rect x="13.5" y="3" width="7.5" height="5.5" rx="2"/><rect x="13.5" y="11.5" width="7.5" height="9.5" rx="2"/><rect x="3" y="15" width="7.5" height="6" rx="2"/>',
+-	shield: '<path d="M12 3l7.5 3v5.6c0 4.6-3.2 8.4-7.5 9.4-4.3-1-7.5-4.8-7.5-9.4V6L12 3z"/><path d="M8.8 12.2l2.2 2.2 4.3-4.4"/>',
+-	bolt: '<path d="M13.2 2.8L5 13.5h6.2l-1.1 7.7 8.4-10.9h-6.3l1-7.5z"/>',
+-	adblock: '<path d="M12 3l7.5 3v5.6c0 4.6-3.2 8.4-7.5 9.4-4.3-1-7.5-4.8-7.5-9.4V6L12 3z"/><circle cx="12" cy="11.6" r="4.3"/><path d="M9 8.6l6 6"/>',
+-	list: '<path d="M8.5 6.5h11.5M8.5 12h11.5M8.5 17.5h11.5"/><circle cx="4.3" cy="6.5" r="1"/><circle cx="4.3" cy="12" r="1"/><circle cx="4.3" cy="17.5" r="1"/>',
+-	globe: '<circle cx="12" cy="12" r="9"/><path d="M3.5 9h17M3.5 15h17M12 3c2.6 2.6 3.8 5.6 3.8 9s-1.2 6.4-3.8 9c-2.6-2.6-3.8-5.6-3.8-9S9.4 5.6 12 3z"/>',
+-	send: '<path d="M21 3.5L3.5 10.3l6.7 2.8 2.8 6.9L21 3.5z"/><path d="M10.2 13.1l4.6-4.6"/>',
+-	layers: '<path d="M12 3.2l9 4.9-9 4.9-9-4.9 9-4.9z"/><path d="M3 12.3l9 4.9 9-4.9"/><path d="M3 16.4l9 4.9 9-4.9"/>',
+-	play: '<rect x="2.5" y="5" width="19" height="14" rx="4.5"/><path d="M10.2 9.3v5.4l4.6-2.7-4.6-2.7z"/>',
+-	cpu: '<rect x="6" y="6" width="12" height="12" rx="2.5"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/><path d="M9.5 2.5v3.5M14.5 2.5v3.5M9.5 18v3.5M14.5 18v3.5M2.5 9.5H6M2.5 14.5H6M18 9.5h3.5M18 14.5h3.5"/>',
+-	logout: '<path d="M14.5 4h3a2.5 2.5 0 0 1 2.5 2.5v11a2.5 2.5 0 0 1-2.5 2.5h-3"/><path d="M10 16.5L5.5 12 10 7.5M5.5 12H15"/>',
+-	sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4L6 18M18 6l1.4-1.4"/>',
+-	moon: '<path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5a8.5 8.5 0 1 0 10.7 10.7z"/>',
+-	ink: '<rect x="3.5" y="3.5" width="13" height="13" rx="1.5"/><path d="M8 20.5h12.5V8"/>',
+-	bento: '<rect x="3.5" y="3.5" width="10" height="10" rx="2.5"/><rect x="15.5" y="3.5" width="5" height="10" rx="2"/><rect x="3.5" y="15.5" width="5" height="5" rx="2"/><rect x="10.5" y="15.5" width="10" height="5" rx="2"/>',
+-	brush: '<path d="M18.6 3.4a2.1 2.1 0 0 1 3 3L13 15l-4-4z"/><path d="M8.6 13.5c-2.2 0-4 1.8-4 4 0 1.3-.8 2.3-2.1 3 1.1.4 2.3.6 3.5.6 3.1 0 5.6-2.3 5.6-5z"/>',
+-	retro: '<rect x="3" y="4" width="18" height="16"/><path d="M3 8.5h18M16 6.2h3"/>',
+-	depth: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/>',
+-	graphite: '<path d="M4.5 17a8 8 0 1 1 15 0"/><path d="M12 13l3.8-3.8"/><circle cx="12" cy="13" r="1.2"/>',
+-	oled: '<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 0 0 17z" fill="currentColor"/>',
+-	traffic: '<path d="M7 4v14M3.5 14.5L7 18l3.5-3.5"/><path d="M17 20V6M13.5 9.5L17 6l3.5 3.5"/>',
+-	neon: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',
+-	contrast: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M20 7v10a3 3 0 0 1-3 3H7z" fill="currentColor" stroke="none"/>',
+-	metro: '<circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="12" r="2.5"/><path d="M8.5 12h7M6 3v6.5M18 14.5V21"/>',
+-	synth: '<path d="M3 15h18M5 19h14M8 23h8"/><path d="M6 15a6 6 0 0 1 12 0"/>',
+-	noir: '<path d="M4 14c2-5 14-5 16 0"/><path d="M2 14h20"/><path d="M8 9.5l1-4.5h6l1 4.5"/>',
+-	wave: '<path d="M3 12h2l2-5 3 11 3-14 3 10 2-4h3"/>',
+-	animoff: '<circle cx="12" cy="12" r="8.5"/><path d="M6 18L18 6"/>',
+-	stars: '<circle cx="5" cy="7" r="1.6"/><circle cx="12" cy="4.5" r="1.6"/><circle cx="19" cy="9" r="1.6"/><circle cx="8" cy="17" r="1.6"/><circle cx="17" cy="18.5" r="1.6"/><path d="M6.5 7.6l3.9 3M12.6 6l5.6 2.3M9.1 15.8l2.3-4.6M18.4 10.6l-1.1 6.3M9.6 17.4l5.8 1"/><circle cx="12" cy="11" r="1.4"/>',
+-	matrix: '<path d="M6 3v5M6 12v3M6 19v2M12 3v2M12 9v7M12 20v1M18 3v8M18 15v3"/>',
+-	palette: '<path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.8 1.8-1.7 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-.9.8-1.7 1.7-1.7H16a5 5 0 0 0 5-5C21 6.6 17 3 12 3z"/><circle cx="7.5" cy="11" r="1.2"/><circle cx="10.5" cy="7" r="1.2"/><circle cx="15.5" cy="7.5" r="1.2"/>',
+-	refresh: '<path d="M20 11.5A8 8 0 0 0 5.6 6.8L4 8.5"/><path d="M4 4v4.5h4.5"/><path d="M4 12.5a8 8 0 0 0 14.4 4.7l1.6-1.7"/><path d="M20 20v-4.5h-4.5"/>',
+-	menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+-	close: '<path d="M6 6l12 12M18 6L6 18"/>',
+-	external: '<path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v4.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10"/>',
+-	eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>',
+-	gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+-	navChev: '<path d="M6 9.5l6 6 6-6"/>',
+-	eyeOff: '<path d="M3 3l18 18"/><path d="M10.6 5.6A10 10 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a17 17 0 0 1-3.1 3.9M6.2 6.9C3.9 8.6 2.5 12 2.5 12S6 18.5 12 18.5c1.7 0 3.2-.5 4.5-1.2"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
+-	user: '<circle cx="12" cy="8" r="4"/><path d="M4 20.5c1.3-3.8 4.3-5.5 8-5.5s6.7 1.7 8 5.5"/>',
+-	lock: '<rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>',
+-	arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+-	alert: '<path d="M12 3.5l9.5 16.5h-19L12 3.5z"/><path d="M12 10v4.5M12 17.3v.2"/>',
+-	fork: '<path d="M4.2 3.6 8.6 7.6Q12 6.6 15.4 7.6L19.8 3.6Q20.9 8.4 19.1 11.8L20.4 13.1Q16.6 14.6 14.5 18.6Q12 21.4 9.5 18.6Q7.4 14.6 3.6 13.1L4.9 11.8Q3.1 8.4 4.2 3.6Z" stroke-linejoin="round"/><path d="M8.3 11.9 10.1 12.8M15.7 11.9 13.9 12.8"/><circle cx="12" cy="17.3" r=".9" fill="currentColor" stroke="none"/>',
+-	route: '<circle cx="6" cy="18.5" r="2.2"/><circle cx="18" cy="5.5" r="2.2"/><path d="M8.2 18.5h7.3a3.3 3.3 0 0 0 0-6.6h-7a3.3 3.3 0 0 1 0-6.6h7.3"/>',
+-	tunnel: '<path d="M3 20V11a9 9 0 0 1 18 0v9"/><path d="M7 20v-8a5 5 0 0 1 10 0v8"/><path d="M3 20h18"/>',
+-	terminal: '<rect x="3" y="4.5" width="18" height="15" rx="2.2"/><path d="M7 9.5l3 2.5-3 2.5M12.5 15h4.5"/>',
+-	phone: '<rect x="6.5" y="2.5" width="11" height="19" rx="2.6"/><path d="M10.5 18.5h3"/><path d="M9.6 9.4a3.4 3.4 0 0 1 4.8 0M8.2 7.6a5.4 5.4 0 0 1 7.6 0"/><circle cx="12" cy="11.8" r=".9" fill="currentColor"/>',
+-	activity: '<path d="M3 12.5h3.8l2.4-6.5 4.3 13 2.6-6.5H21"/>',
+-	clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+-	sliders: '<path d="M4 6.5h9M17 6.5h3M4 12h3M11 12h9M4 17.5h11M19 17.5h1"/><circle cx="15" cy="6.5" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="17.5" r="2"/>',
+-	trash: '<path d="M4 7h16"/><path d="M9.5 7V4.5h5V7"/><path d="M6.5 7l1 12.5h9l1-12.5"/><path d="M10 11v5.5M14 11v5.5"/>',
+-	info: '<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5"/><path d="M12 7.7v.1"/>',
+-	archive: '<rect x="3.5" y="4" width="17" height="4.5" rx="1.5"/><path d="M5.5 8.5v10a1.5 1.5 0 0 0 1.5 1.5h10a1.5 1.5 0 0 0 1.5-1.5v-10"/><path d="M10 12.5h4"/>',
+-	anarchy: '<circle cx="12" cy="12.8" r="7.3"/><path d="M12 2.2L4.2 21.8M12 2.2l7.8 19.6M3.6 14.6h16.8"/>',
+-	heart: '<path d="M12 20s-7-4.4-9-9.2C1.7 7.6 3.6 4.5 6.8 4.5c2 0 3.5 1.1 5.2 3 1.7-1.9 3.2-3 5.2-3 3.2 0 5.1 3.1 3.8 6.3C19 15.6 12 20 12 20z"/>',
+-	rocket: '<path d="M12 2.5c2.9 2.1 4.3 5.3 4.3 9.2V16H7.7v-4.3c0-3.9 1.4-7.1 4.3-9.2z"/><circle cx="12" cy="9.3" r="1.7"/><path d="M7.7 12.2L5 14.6V18l2.7-2M16.3 12.2l2.7 2.4V18l-2.7-2"/><path d="M10.2 18.5 12 21.5l1.8-3"/>',
+-	rprev: '<path d="M18.5 6.3v11.4L10.2 12z" fill="currentColor" stroke="none"/><path d="M6.5 6.2v11.6"/>',
+-	rnext: '<path d="M5.5 6.3v11.4L13.8 12z" fill="currentColor" stroke="none"/><path d="M17.5 6.2v11.6"/>',
+-	rplay: '<path d="M8.2 5.6v12.8L18.6 12z" fill="currentColor" stroke="none"/>',
+-	rstop: '<rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor" stroke="none"/>',
+-	rswap: '<path d="M4.5 8.5h14"/><path d="M15 5l3.5 3.5L15 12"/><path d="M19.5 15.5h-14"/><path d="M9 12l-3.5 3.5L9 19"/>',
+-	rstar: '<path d="M12 3.6l2.55 5.17 5.7.83-4.13 4.02.98 5.68L12 16.62l-5.1 2.68.98-5.68-4.13-4.02 5.7-.83z"/>',
+-	radio: '<rect x="3" y="8.5" width="18" height="11.5" rx="3"/><path d="M7.5 8.5l9-4.5"/><circle cx="15.5" cy="14.2" r="2.5"/><path d="M6.8 12.7h3M6.8 15.7h3"/>',
+-	telegram: '<path d="M21 4.5L2.8 11.4c-.8.3-.8 1.4 0 1.7l4.4 1.5 1.7 5.3c.2.7 1.1.9 1.6.4l2.5-2.4 4.6 3.4c.6.4 1.4.1 1.6-.6L22.3 5.8c.2-.9-.6-1.6-1.3-1.3z"/><path d="M7.3 14.6l10-6.6-7.4 8"/>'
++dashboard: '<rect x="3" y="3" width="7.5" height="9" rx="2"/><rect x="13.5" y="3" width="7.5" height="5.5" rx="2"/><rect x="13.5" y="11.5" width="7.5" height="9.5" rx="2"/><rect x="3" y="15" width="7.5" height="6" rx="2"/>',
++shield: '<path d="M12 3l7.5 3v5.6c0 4.6-3.2 8.4-7.5 9.4-4.3-1-7.5-4.8-7.5-9.4V6L12 3z"/><path d="M8.8 12.2l2.2 2.2 4.3-4.4"/>',
++bolt: '<path d="M13.2 2.8L5 13.5h6.2l-1.1 7.7 8.4-10.9h-6.3l1-7.5z"/>',
++adblock: '<path d="M12 3l7.5 3v5.6c0 4.6-3.2 8.4-7.5 9.4-4.3-1-7.5-4.8-7.5-9.4V6L12 3z"/><circle cx="12" cy="11.6" r="4.3"/><path d="M9 8.6l6 6"/>',
++list: '<path d="M8.5 6.5h11.5M8.5 12h11.5M8.5 17.5h11.5"/><circle cx="4.3" cy="6.5" r="1"/><circle cx="4.3" cy="12" r="1"/><circle cx="4.3" cy="17.5" r="1"/>',
++globe: '<circle cx="12" cy="12" r="9"/><path d="M3.5 9h17M3.5 15h17M12 3c2.6 2.6 3.8 5.6 3.8 9s-1.2 6.4-3.8 9c-2.6-2.6-3.8-5.6-3.8-9S9.4 5.6 12 3z"/>',
++send: '<path d="M21 3.5L3.5 10.3l6.7 2.8 2.8 6.9L21 3.5z"/><path d="M10.2 13.1l4.6-4.6"/>',
++layers: '<path d="M12 3.2l9 4.9-9 4.9-9-4.9 9-4.9z"/><path d="M3 12.3l9 4.9 9-4.9"/><path d="M3 16.4l9 4.9 9-4.9"/>',
++play: '<rect x="2.5" y="5" width="19" height="14" rx="4.5"/><path d="M10.2 9.3v5.4l4.6-2.7-4.6-2.7z"/>',
++cpu: '<rect x="6" y="6" width="12" height="12" rx="2.5"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/><path d="M9.5 2.5v3.5M14.5 2.5v3.5M9.5 18v3.5M14.5 18v3.5M2.5 9.5H6M2.5 14.5H6M18 9.5h3.5M18 14.5h3.5"/>',
++logout: '<path d="M14.5 4h3a2.5 2.5 0 0 1 2.5 2.5v11a2.5 2.5 0 0 1-2.5 2.5h-3"/><path d="M10 16.5L5.5 12 10 7.5M5.5 12H15"/>',
++sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4L6 18M18 6l1.4-1.4"/>',
++moon: '<path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5a8.5 8.5 0 1 0 10.7 10.7z"/>',
++ink: '<rect x="3.5" y="3.5" width="13" height="13" rx="1.5"/><path d="M8 20.5h12.5V8"/>',
++bento: '<rect x="3.5" y="3.5" width="10" height="10" rx="2.5"/><rect x="15.5" y="3.5" width="5" height="10" rx="2"/><rect x="3.5" y="15.5" width="5" height="5" rx="2"/><rect x="10.5" y="15.5" width="10" height="5" rx="2"/>',
++brush: '<path d="M18.6 3.4a2.1 2.1 0 0 1 3 3L13 15l-4-4z"/><path d="M8.6 13.5c-2.2 0-4 1.8-4 4 0 1.3-.8 2.3-2.1 3 1.1.4 2.3.6 3.5.6 3.1 0 5.6-2.3 5.6-5z"/>',
++retro: '<rect x="3" y="4" width="18" height="16"/><path d="M3 8.5h18M16 6.2h3"/>',
++depth: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/>',
++graphite: '<path d="M4.5 17a8 8 0 1 1 15 0"/><path d="M12 13l3.8-3.8"/><circle cx="12" cy="13" r="1.2"/>',
++oled: '<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 0 0 17z" fill="currentColor"/>',
++traffic: '<path d="M7 4v14M3.5 14.5L7 18l3.5-3.5"/><path d="M17 20V6M13.5 9.5L17 6l3.5 3.5"/>',
++neon: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',
++contrast: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M20 7v10a3 3 0 0 1-3 3H7z" fill="currentColor" stroke="none"/>',
++metro: '<circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="12" r="2.5"/><path d="M8.5 12h7M6 3v6.5M18 14.5V21"/>',
++synth: '<path d="M3 15h18M5 19h14M8 23h8"/><path d="M6 15a6 6 0 0 1 12 0"/>',
++noir: '<path d="M4 14c2-5 14-5 16 0"/><path d="M2 14h20"/><path d="M8 9.5l1-4.5h6l1 4.5"/>',
++wave: '<path d="M3 12h2l2-5 3 11 3-14 3 10 2-4h3"/>',
++animoff: '<circle cx="12" cy="12" r="8.5"/><path d="M6 18L18 6"/>',
++stars: '<circle cx="5" cy="7" r="1.6"/><circle cx="12" cy="4.5" r="1.6"/><circle cx="19" cy="9" r="1.6"/><circle cx="8" cy="17" r="1.6"/><circle cx="17" cy="18.5" r="1.6"/><path d="M6.5 7.6l3.9 3M12.6 6l5.6 2.3M9.1 15.8l2.3-4.6M18.4 10.6l-1.1 6.3M9.6 17.4l5.8 1"/><circle cx="12" cy="11" r="1.4"/>',
++matrix: '<path d="M6 3v5M6 12v3M6 19v2M12 3v2M12 9v7M12 20v1M18 3v8M18 15v3"/>',
++palette: '<path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.8 1.8-1.7 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-.9.8-1.7 1.7-1.7H16a5 5 0 0 0 5-5C21 6.6 17 3 12 3z"/><circle cx="7.5" cy="11" r="1.2"/><circle cx="10.5" cy="7" r="1.2"/><circle cx="15.5" cy="7.5" r="1.2"/>',
++refresh: '<path d="M20 11.5A8 8 0 0 0 5.6 6.8L4 8.5"/><path d="M4 4v4.5h4.5"/><path d="M4 12.5a8 8 0 0 0 14.4 4.7l1.6-1.7"/><path d="M20 20v-4.5h-4.5"/>',
++menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
++close: '<path d="M6 6l12 12M18 6L6 18"/>',
++external: '<path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v4.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10"/>',
++eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>',
++gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
++navChev: '<path d="M6 9.5l6 6 6-6"/>',
++eyeOff: '<path d="M3 3l18 18"/><path d="M10.6 5.6A10 10 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a17 17 0 0 1-3.1 3.9M6.2 6.9C3.9 8.6 2.5 12 2.5 12S6 18.5 12 18.5c1.7 0 3.2-.5 4.5-1.2"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
++user: '<circle cx="12" cy="8" r="4"/><path d="M4 20.5c1.3-3.8 4.3-5.5 8-5.5s6.7 1.7 8 5.5"/>',
++lock: '<rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>',
++arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
++alert: '<path d="M12 3.5l9.5 16.5h-19L12 3.5z"/><path d="M12 10v4.5M12 17.3v.2"/>',
++fork: '<path d="M4.2 3.6 8.6 7.6Q12 6.6 15.4 7.6L19.8 3.6Q20.9 8.4 19.1 11.8L20.4 13.1Q16.6 14.6 14.5 18.6Q12 21.4 9.5 18.6Q7.4 14.6 3.6 13.1L4.9 11.8Q3.1 8.4 4.2 3.6Z" stroke-linejoin="round"/><path d="M8.3 11.9 10.1 12.8M15.7 11.9 13.9 12.8"/><circle cx="12" cy="17.3" r=".9" fill="currentColor" stroke="none"/>',
++route: '<circle cx="6" cy="18.5" r="2.2"/><circle cx="18" cy="5.5" r="2.2"/><path d="M8.2 18.5h7.3a3.3 3.3 0 0 0 0-6.6h-7a3.3 3.3 0 0 1 0-6.6h7.3"/>',
++tunnel: '<path d="M3 20V11a9 9 0 0 1 18 0v9"/><path d="M7 20v-8a5 5 0 0 1 10 0v8"/><path d="M3 20h18"/>',
++terminal: '<rect x="3" y="4.5" width="18" height="15" rx="2.2"/><path d="M7 9.5l3 2.5-3 2.5M12.5 15h4.5"/>',
++phone: '<rect x="6.5" y="2.5" width="11" height="19" rx="2.6"/><path d="M10.5 18.5h3"/><path d="M9.6 9.4a3.4 3.4 0 0 1 4.8 0M8.2 7.6a5.4 5.4 0 0 1 7.6 0"/><circle cx="12" cy="11.8" r=".9" fill="currentColor"/>',
++activity: '<path d="M3 12.5h3.8l2.4-6.5 4.3 13 2.6-6.5H21"/>',
++clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
++sliders: '<path d="M4 6.5h9M17 6.5h3M4 12h3M11 12h9M4 17.5h11M19 17.5h1"/><circle cx="15" cy="6.5" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="17.5" r="2"/>',
++trash: '<path d="M4 7h16"/><path d="M9.5 7V4.5h5V7"/><path d="M6.5 7l1 12.5h9l1-12.5"/><path d="M10 11v5.5M14 11v5.5"/>',
++info: '<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5"/><path d="M12 7.7v.1"/>',
++archive: '<rect x="3.5" y="4" width="17" height="4.5" rx="1.5"/><path d="M5.5 8.5v10a1.5 1.5 0 0 0 1.5 1.5h10a1.5 1.5 0 0 0 1.5-1.5v-10"/><path d="M10 12.5h4"/>',
++anarchy: '<circle cx="12" cy="12.8" r="7.3"/><path d="M12 2.2L4.2 21.8M12 2.2l7.8 19.6M3.6 14.6h16.8"/>',
++heart: '<path d="M12 20s-7-4.4-9-9.2C1.7 7.6 3.6 4.5 6.8 4.5c2 0 3.5 1.1 5.2 3 1.7-1.9 3.2-3 5.2-3 3.2 0 5.1 3.1 3.8 6.3C19 15.6 12 20 12 20z"/>',
++rocket: '<path d="M12 2.5c2.9 2.1 4.3 5.3 4.3 9.2V16H7.7v-4.3c0-3.9 1.4-7.1 4.3-9.2z"/><circle cx="12" cy="9.3" r="1.7"/><path d="M7.7 12.2L5 14.6V18l2.7-2M16.3 12.2l2.7 2.4V18l-2.7-2"/><path d="M10.2 18.5 12 21.5l1.8-3"/>',
++rplay: '<path d="M8.2 5.6v12.8L18.6 12z" fill="currentColor" stroke="none"/>',
++rstop: '<rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor" stroke="none"/>',
++telegram: '<path d="M21 4.5L2.8 11.4c-.8.3-.8 1.4 0 1.7l4.4 1.5 1.7 5.3c.2.7 1.1.9 1.6.4l2.5-2.4 4.6 3.4c.6.4 1.4.1 1.6-.6L22.3 5.8c.2-.9-.6-1.6-1.3-1.3z"/><path d="M7.3 14.6l10-6.6-7.4 8"/>'
+ };
+ 
+ function icon(name, cls) {
+@@ -67824,617 +67698,6 @@
+ 	setTimeout(hide, duration || (kind === 'error' ? 12000 : 6000));
+ }
+ 
+-var RADIO = [
+-	[ 'record', 'Record', 'rr_main96', 'hits' ], [ 'russian_hits', 'Russian Hits', 'russianhits96', 'hits' ], [ 'russian_mix', 'Russian Mix', 'rus96', 'hits' ],
+-	[ 'all_timers', 'Вечные Хиты', 'alltimers96', 'hits' ], [ 'remix', 'Remix', 'rmx96', 'hits' ], [ 'mashup', 'Mashup', 'mashup96', 'hits' ],
+-	[ 'radio_80', 'Радио 80-х', '198096', 'retro' ], [ 'superdiskoteka_90', 'Радио 90-х', 'sd9096', 'retro' ], [ 'radio_00', 'Радио 00-х', '200096', 'retro' ], [ 'radio_10', 'Радио 10-х', '201096', 'retro' ],
+-	[ 'edm', 'EDM', 'club96', 'house' ], [ 'house_hits', 'House Hits', 'househits96', 'house' ], [ 'future_house', 'Future House', 'fut96', 'house' ],
+-	[ 'tech_house', 'Tech House', 'techouse96', 'house' ], [ 'deep', 'Deep', 'deep96', 'house' ],
+-	[ 'trancemission', 'Trancemission', 'tm96', 'trance' ], [ 'trance_classics', 'Trance Classics', 'trancehits96', 'trance' ], [ 'progressive', 'Progressive', 'progr96', 'trance' ],
+-	[ 'techno', 'Techno', 'techno96', 'trance' ], [ 'hardstyle', 'Hardstyle', 'teo96', 'trance' ],
+-	[ 'rap_hits', 'Rap Hits', 'rap96', 'bass' ], [ 'trap', 'Trap', 'trap96', 'bass' ], [ 'dubstep', 'Dubstep', 'dub96', 'bass' ], [ 'pirate_station', 'Pirate Station', 'ps96', 'bass' ],
+-	[ 'medlyak_fm', 'Медляк FM', 'mdl96', 'calm' ], [ 'synthwave', 'Synthwave', 'synth96', 'calm' ], [ 'tropical', 'Tropical', 'trop96', 'calm' ], [ 'chill_out', 'Chill-Out', 'chil96', 'calm' ], [ 'lofi', 'Lo-Fi', 'lofi96', 'calm' ],
+-	[ 'rock', 'Rock', 'rock96', 'rock' ],
+-	[ 'o_europa', 'Европа Плюс', 'https://ep256.hostingradio.ru:8052/europaplus256.mp3', 'pop' ],
+-	[ 'o_rusradio', 'Русское Радио', 'https://rusradio.hostingradio.ru/rusradio96.aacp', 'pop' ],
+-	[ 'o_hitfm', 'Хит FM', 'https://hitfm.hostingradio.ru/hitfm96.aacp', 'pop' ],
+-	[ 'o_novoe', 'Новое Радио', 'http://icecast.newradio.cdnvideo.ru/newradio3', 'pop' ],
+-	[ 'o_likefm', 'Like FM', 'https://hls-01-gpm.hostingradio.ru/likefm495/playlist.m3u8', 'pop' ],
+-	[ 'o_shokolad', 'Шоколад', 'https://choco.hostingradio.ru:10010/fm', 'pop' ],
+-	[ 'o_retro', 'Ретро FM', 'https://retro128.streamr.ru/', 'retro' ],
+-	[ 'o_radio7', 'Радио 7', 'https://hls-01-radio7.emgsound.ru/13/playlist.m3u8', 'retro' ],
+-	[ 'o_dfm', 'DFM', 'https://dfm.hostingradio.ru/dfm96.aacp', 'dance' ],
+-	[ 'o_dfmclub', 'DFM Club', 'https://dfm-dfmclub.hostingradio.ru/dfmclub96.aacp', 'dance' ],
+-	[ 'o_dfmrus', 'DFM Russian', 'https://dfm-dfmrusdance.hostingradio.ru/dfmrusdance96.aacp', 'dance' ],
+-	[ 'o_clubcz', 'Club Radio CZ', 'http://radio.ipip.cz:7996/', 'dance' ],
+-	[ 'o_comedy', 'Comedy Radio', 'https://hls-01-gpm.hostingradio.ru/comedyradio391/128/playlist.m3u8', 'humor' ],
+-	[ 'o_humor_vtv', 'Юмор FM', 'https://hls-01-vtv.webcaramba.com/vtv-humorfm/playlist.m3u8', 'humor' ],
+-	[ 'o_humorfm', 'Юмор', 'https://hls-01-gpm.hostingradio.ru/humorfm495/playlist.m3u8', 'humor' ],
+-	[ 'o_avto', 'Авторадио', 'http://ic4.101.ru:8000/stream/air/aac/64/100', 'road' ],
+-	[ 'o_nashe', 'Наше Радио', 'http://nashe128.streamr.ru', 'rock' ],
+-	[ 'o_maximum', 'Rock FM', 'http://nashe2.hostingradio.ru/rock-128.mp3', 'rock' ],
+-	[ 'o_maxhls', 'Maximum', 'https://hls-01-maximum.hostingradio.ru/maximum/playlist.m3u8', 'rock' ],
+-	[ 'o_rockarsenal', 'Rock Arsenal', 'https://online.rockarsenal.ru/rockarsenal_aacplus', 'rock' ],
+-	[ 'o_jazz24', 'Jazz24', 'https://knkx-live-a.edge.audiocdn.com/6285_256k', 'jazz' ],
+-	[ 'z_pop', 'Популярная Музыка', 'https://abs.zaycev.fm/pop256k', 'zaycev' ],
+-	[ 'z_rus', 'Русская Музыка', 'https://abs.zaycev.fm/rus256k', 'zaycev' ],
+-	[ 'z_kpop', 'K-Pop', 'https://abs.zaycev.fm/kpop256k', 'zaycev' ],
+-	[ 'z_disco', 'Диско', 'https://abs.zaycev.fm/disco256k', 'zaycev' ],
+-	[ 'z_love', 'Романтика', 'https://abs.zaycev.fm/love256k', 'zaycev' ],
+-	[ 'z_shanson', 'Шансон', 'https://abs.zaycev.fm/shanson256k', 'zaycev' ],
+-	[ 'z_club', 'Клубная Музыка', 'https://abs.zaycev.fm/club256k', 'zaycev' ],
+-	[ 'z_bass', 'Dubstep & Trap', 'https://abs.zaycev.fm/bass256k', 'zaycev' ],
+-	[ 'z_rnb', 'R’n’B', 'https://abs.zaycev.fm/rnb256k', 'zaycev' ],
+-	[ 'z_rap', 'Rap', 'https://abs.zaycev.fm/rap256k', 'zaycev' ],
+-	[ 'z_relax', 'Релакс Музыка', 'https://abs.zaycev.fm/relax256k', 'zaycev' ],
+-	[ 'z_classic', 'Классическая Музыка', 'https://abs.zaycev.fm/classic256k', 'zaycev' ],
+-	[ 'z_rock', 'New Rock', 'https://abs.zaycev.fm/rock256k', 'zaycev' ],
+-	[ 'z_rurock', 'Русский Рок', 'https://abs.zaycev.fm/rurock256k', 'zaycev' ],
+-	[ 'z_folk', 'Фолк Рок', 'https://abs.zaycev.fm/folk256k', 'zaycev' ],
+-	[ 'z_metal', 'Heavy Metal', 'https://abs.zaycev.fm/metal256k', 'zaycev' ],
+-	[ 'z_zaychata', 'Зайчата', 'https://abs.zaycev.fm/zaychata256k', 'zaycev' ],
+-];
+-var RADIO_SETS = [ { id: 'f', name: 'Избранное' }, { id: 'r', name: 'Радио Record' }, { id: 'z', name: 'Zaycev FM' }, { id: 'o', name: 'Разные станции' } ];
+-var HLS_SRC = [ 'https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.light.min.js', 'https://unpkg.com/hls.js@1/dist/hls.light.min.js' ];
+-function radioSetOf(i) { return /^z_/.test(RADIO[i][0]) ? 'z' : /^https?:\/\//.test(RADIO[i][2]) ? 'o' : 'r'; }
+-function radioSetName(i) { var k = radioSetOf(i); return k === 'z' ? 'Zaycev FM' : k === 'o' ? '' : 'Радио Record'; }
+-function radioUrl(i) { var p = RADIO[i][2]; return /^https?:\/\//.test(p) ? p : 'https://radiorecord.hostingradio.ru/' + p + '.aacp'; }
+-function radioIsHls(i) { return /\.m3u8(\?|$)/.test(radioUrl(i)); }
+-function radioIdx(set) {
+-	if (set === 'f') return radio.fav.map(radioFind).filter(function (i) { return i >= 0; });
+-	var r = [];
+-	for (var i = 0; i < RADIO.length; i++) if (radioSetOf(i) === set) r.push(i);
+-	return r;
+-}
+-function radioIsFav(i) { return radio.fav.indexOf(RADIO[i][0]) >= 0; }
+-function radioFavToggle(i) {
+-	var id = RADIO[i][0], k = radio.fav.indexOf(id);
+-	if (k >= 0) radio.fav.splice(k, 1); else radio.fav.push(id);
+-	radioSave();
+-	radioPaint();
+-}
+-function radioInFav() { return radio.ctx === 'f' && radioIsFav(radio.idx); }
+-var K_RADIO = 'zmw.radio';
+-var radio = { idx: 0, vol: 70, show: true, state: 'off', audio: null, el: null, menu: null, saveT: 0, waitT: 0, synced: false, track: null, nowT: 0, nowSeq: 0, nowOff: false, subTxt: null, hls: null, hlsP: null, startSeq: 0, tab: 'r', fav: [], prev: -1, ctx: '' };
+-(function () {
+-	try {
+-		var c = JSON.parse(sget(K_RADIO) || 'null');
+-		if (c) radioApplyCfg(c);
+-	} catch (e) {}
+-})();
+-function radioGain(v) { v = Math.max(0, Math.min(100, +v || 0)) / 100; return v * v * v; }
+-function radioFind(id) { for (var i = 0; i < RADIO.length; i++) if (RADIO[i][0] === id) return i; return -1; }
+-function radioApplyCfg(c) {
+-	var i = radioFind(c.station);
+-	if (i >= 0) radio.idx = i;
+-	if (typeof c.volume === 'number' && c.volume >= 0 && c.volume <= 100) radio.vol = c.volume;
+-	if (typeof c.show === 'boolean') radio.show = c.show;
+-	if (Array.isArray(c.fav)) radio.fav = c.fav.filter(function (id, k, a) { return typeof id === 'string' && radioFind(id) >= 0 && a.indexOf(id) === k; });
+-	if (typeof c.prev === 'string') { i = radioFind(c.prev); radio.prev = i === radio.idx ? -1 : i; }
+-	if (c.ctx === 'f' || c.ctx === '') radio.ctx = c.ctx;
+-}
+-function radioCache() { sset(K_RADIO, JSON.stringify({ station: RADIO[radio.idx][0], volume: radio.vol, show: radio.show, prev: radio.prev >= 0 ? RADIO[radio.prev][0] : '', fav: radio.fav, ctx: radio.ctx }), true); }
+-function radioSave() {
+-	radioCache();
+-	clearTimeout(radio.saveT);
+-	radio.saveT = setTimeout(function () {
+-		if (!sid) return;
+-		ubus('zapret-manager', 'ui_radio_set', { mode: RADIO[radio.idx][0] + ' ' + radio.vol + ' ' + (radio.show ? 1 : 0) + ' ' + (radio.prev >= 0 ? RADIO[radio.prev][0] : '-') + ' ' + (radio.fav.length ? radio.fav.join(',') : '-') }).catch(function () {});
+-	}, 700);
+-}
+-function radioSync() {
+-	if (radio.synced) return;
+-	ubus('zapret-manager', 'ui_radio_get', {}).then(function (res) {
+-		var c = res && res[0] === 0 ? res[1] : null;
+-		if (!c) return;
+-		radio.synced = true;
+-		if (!c.station) { radioSave(); return; }
+-		var was = radio.idx, loc = radio.fav.slice();
+-		radioApplyCfg(c);
+-		if (!Array.isArray(c.fav) && loc.length) { radio.fav = loc; radioSave(); }
+-		if (radio.idx !== was && radio.state !== 'off' && radio.state !== 'err') radioStart();
+-		if (!radio.show && radio.state !== 'off') radioStop();
+-		if (typeof lookPageRender === 'function') lookPageRender();
+-		if (radio.audio) radio.audio.volume = radioGain(radio.vol);
+-		radioCache();
+-		radioPaint();
+-	}).catch(function () {});
+-}
+-var K_RNC = 'zmw.rnocors', radAud = { ac: null, an: null, src: null };
+-function radioNoCors(id) { return (' ' + (sget(K_RNC) || '') + ' ').indexOf(' ' + id + ' ') >= 0; }
+-function radioNoCorsAdd(id) {
+-	if (!id || radioNoCors(id)) return;
+-	var l = (sget(K_RNC) || '').split(' ').filter(Boolean);
+-	l.push(id);
+-	sset(K_RNC, l.slice(-60).join(' '), true);
+-}
+-function radioCorsWant(i) { return animReact() && !radioNoCors(RADIO[i][0]) && !!(window.AudioContext || window.webkitAudioContext); }
+-function radioCorsCheck() { if (radio.state === 'play' && radio.audio !== radio.audX && radioCorsWant(radio.idx)) radioStart(); }
+-function radioLive() { return !!(radAud.src && radio.audio && radio.audio === radio.audX && radio.state === 'play'); }
+-function radioRoute(a) {
+-	var AC = window.AudioContext || window.webkitAudioContext;
+-	if (radAud.src || !AC) return;
+-	try { if (!radAud.ac) radAud.ac = new AC(); } catch (e) { return; }
+-	var ac = radAud.ac;
+-	ac.resume().then(function () {
+-		if (radAud.src || ac.state !== 'running' || radio.audio !== a) return;
+-		radAud.an = ac.createAnalyser();
+-		radAud.an.fftSize = 2048;
+-		radAud.an.smoothingTimeConstant = 0.78;
+-		radAud.src = ac.createMediaElementSource(a);
+-		radAud.src.connect(radAud.an);
+-		radAud.an.connect(ac.destination);
+-	}).catch(function () {});
+-}
+-function radioCorsFail(a) {
+-	if (radio.audio !== a || a !== radio.audX || !radio.corsTry || (radio.state !== 'wait' && radio.state !== 'play')) return false;
+-	radio.corsTry = false;
+-	radio.ncPend = RADIO[radio.idx][0];
+-	radioStart(true);
+-	return true;
+-}
+-function radioEl(cors) {
+-	var k = cors ? 'audX' : 'aud0';
+-	if (radio[k]) return radio[k];
+-	var a = new Audio();
+-	a.preload = 'none';
+-	if (cors) a.crossOrigin = 'anonymous';
+-	a.addEventListener('playing', function () {
+-		if (radio.audio !== a || (radio.state !== 'wait' && radio.state !== 'play')) return;
+-		clearTimeout(radio.waitT);
+-		radio.state = 'play';
+-		if (cors) { radio.corsTry = false; radioRoute(a); }
+-		else if (radio.ncPend) { if (radio.ncPend === RADIO[radio.idx][0]) radioNoCorsAdd(radio.ncPend); radio.ncPend = ''; }
+-		radioPaint();
+-	});
+-	a.addEventListener('waiting', function () {
+-		if (radio.audio !== a || radio.state !== 'play') return;
+-		radio.state = 'wait';
+-		radioPaint();
+-		radioWaitGuard();
+-	});
+-	a.addEventListener('error', function () {
+-		if (radio.audio !== a || (radio.state !== 'wait' && radio.state !== 'play')) return;
+-		if (!radioCorsFail(a)) radioFail();
+-	});
+-	a.addEventListener('pause', function () {
+-		if (radio.audio === a && radio.state === 'play' && a.getAttribute('src')) { radio.state = 'off'; radioRelease(); radioNowStop(); radioPaint(); }
+-	});
+-	radio[k] = a;
+-	return a;
+-}
+-function radioWaitGuard() {
+-	clearTimeout(radio.waitT);
+-	radio.waitT = setTimeout(function () { if (radio.state === 'wait') radioFail(); }, 20000);
+-}
+-function radioHlsDrop() {
+-	if (!radio.hls) return;
+-	try { radio.hls.destroy(); } catch (e) {}
+-	radio.hls = null;
+-}
+-function radioHlsLib() {
+-	if (window.Hls) return Promise.resolve(window.Hls);
+-	if (radio.hlsP) return radio.hlsP;
+-	radio.hlsP = new Promise(function (ok, no) {
+-		var i = 0;
+-		(function next() {
+-			if (i >= HLS_SRC.length) { radio.hlsP = null; no(new Error('hls')); return; }
+-			var sc = document.createElement('script');
+-			sc.src = HLS_SRC[i++];
+-			sc.async = true;
+-			sc.onload = function () { if (window.Hls) ok(window.Hls); else next(); };
+-			sc.onerror = function () { sc.remove(); next(); };
+-			document.head.appendChild(sc);
+-		})();
+-	});
+-	return radio.hlsP;
+-}
+-function radioRelease() {
+-	clearTimeout(radio.waitT);
+-	radio.startSeq++;
+-	radioHlsDrop();
+-	var a = radio.audio;
+-	if (!a) return;
+-	try { a.pause(); } catch (e) {}
+-	a.removeAttribute('src');
+-	try { a.load(); } catch (e) {}
+-}
+-function radioStart(plain) {
+-	var i = radio.idx, cors = plain !== true && radioCorsWant(i), a = radioEl(cors), seq;
+-	if (radio.audio && radio.audio !== a) radioRelease();
+-	seq = ++radio.startSeq;
+-	radio.audio = a;
+-	radio.corsTry = cors && !radioIsHls(i);
+-	if (plain !== true) radio.ncPend = '';
+-	if (cors && !radAud.ac) { try { radAud.ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+-	a.volume = radioGain(radio.vol);
+-	radio.state = 'wait';
+-	radioHlsDrop();
+-	radioPaint();
+-	radioWaitGuard();
+-	if (radio.track && radio.track.idx !== radio.idx) radio.track = null;
+-	radioNow();
+-	radioMedia();
+-	if (radioIsHls(i) && !a.canPlayType('application/vnd.apple.mpegurl')) {
+-		radioHlsLib().then(function (Hls) {
+-			if (seq !== radio.startSeq || radio.state !== 'wait') return;
+-			if (!Hls.isSupported()) { radioFail(); return; }
+-			var h = new Hls({ enableWorker: true });
+-			radio.hls = h;
+-			h.on(Hls.Events.ERROR, function (ev, d) {
+-				if (d && d.fatal && radio.hls === h && (radio.state === 'wait' || radio.state === 'play')) radioFail();
+-			});
+-			h.loadSource(radioUrl(i));
+-			h.attachMedia(a);
+-			radioPlay(a);
+-		}, function () {
+-			if (seq !== radio.startSeq || radio.state !== 'wait') return;
+-			radioRelease();
+-			radio.state = 'err';
+-			radioPaint();
+-			toast('Радио: «' + RADIO[i][1] + '» идёт в формате HLS, а проигрыватель для него не загрузился — проверьте интернет или выберите другую станцию', 'warning');
+-		});
+-		return;
+-	}
+-	a.src = radioUrl(i);
+-	radioPlay(a);
+-}
+-function radioPlay(a) {
+-	var p = a.play();
+-	if (p && p.catch) p.catch(function (e) {
+-		if (radio.audio !== a || (e && e.name === 'AbortError')) return;
+-		if (radio.state !== 'wait' && radio.state !== 'play') return;
+-		if (e && e.name === 'NotAllowedError') { radio.state = 'off'; radioRelease(); radioNowStop(); radioPaint(); toast('Браузер не дал включить звук — нажмите «Играть» ещё раз', 'warning'); return; }
+-		if (!radioCorsFail(a)) radioFail();
+-	});
+-}
+-function radioStop() {
+-	radio.state = 'off';
+-	radioRelease();
+-	radioNowStop();
+-	radioPaint();
+-}
+-function radioFail() {
+-	var name = RADIO[radio.idx][1];
+-	radioRelease();
+-	radioNowStop();
+-	radio.state = 'err';
+-	radioPaint();
+-	toast('Радио: станция «' + name + '» сейчас не отвечает — попробуйте позже или выберите другую', 'warning');
+-}
+-function radioToggle() {
+-	if (radio.state === 'wait' || radio.state === 'play') radioStop(); else radioStart();
+-}
+-function radioGo(i) {
+-	i = (i + RADIO.length) % RADIO.length;
+-	if (i !== radio.idx) radio.prev = radio.idx;
+-	radio.idx = i;
+-}
+-function radioPick(i, ctx) {
+-	radioGo(i);
+-	radio.ctx = ctx === 'f' ? 'f' : '';
+-	radioSave();
+-	radioStart();
+-}
+-function radioJump(i) {
+-	var on = radio.state === 'wait' || radio.state === 'play';
+-	radioGo(i);
+-	radioSave();
+-	if (on) radioStart();
+-	else { radio.state = 'off'; radioNowStop(); radioPaint(); radioMedia(); }
+-}
+-function radioStep(d) {
+-	var g = radioIdx(radioInFav() && radio.fav.length > 1 ? 'f' : radioSetOf(radio.idx)), k = g.indexOf(radio.idx);
+-	radioJump(g[((k < 0 ? 0 : k) + d + g.length) % g.length]);
+-}
+-function radioSwap() {
+-	if (radio.prev < 0 || radio.prev === radio.idx) return;
+-	if (radio.ctx === 'f' && !radioIsFav(radio.prev)) radio.ctx = '';
+-	radioJump(radio.prev);
+-}
+-function radioNowStop() {
+-	clearTimeout(radio.nowT);
+-	radio.nowT = 0;
+-	radio.nowSeq++;
+-	if (radio.track) { radio.track = null; radioMedia(); }
+-}
+-function radioNowSet(idx, t) {
+-	var a = t && typeof t.artist === 'string' ? t.artist.replace(/\s+/g, ' ').trim() : '';
+-	var s = t && typeof t.song === 'string' ? t.song.replace(/\s+/g, ' ').trim() : '';
+-	var nt = a || s ? { idx: idx, artist: a, song: s, text: a && s ? a + ' — ' + s : a || s } : null;
+-	var old = radio.track;
+-	if ((old ? old.text + old.idx : '') === (nt ? nt.text + nt.idx : '')) return;
+-	radio.track = nt;
+-	radioMedia();
+-	radioPaint();
+-}
+-function radioIcy(hex) {
+-	if (typeof hex !== 'string' || !hex || hex.length % 2 || /[^0-9a-f]/.test(hex)) return null;
+-	var b = new Uint8Array(hex.length / 2), i, s = '';
+-	for (i = 0; i < b.length; i++) b[i] = parseInt(hex.substr(i * 2, 2), 16);
+-	try { s = new TextDecoder('utf-8', { fatal: true }).decode(b); }
+-	catch (e) { try { s = new TextDecoder('windows-1251').decode(b); } catch (e2) { return null; } }
+-	i = s.indexOf("StreamTitle='");
+-	if (i < 0) return null;
+-	s = s.slice(i + 13);
+-	i = s.search(/';\s*Stream[A-Za-z]+=/);
+-	if (i < 0) i = s.lastIndexOf("';");
+-	if (i >= 0) s = s.slice(0, i);
+-	s = s.replace(/[\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim();
+-	if (!s || /^[-\s]*$/.test(s)) return null;
+-	i = s.indexOf(' - ');
+-	return i > 0 ? { artist: s.slice(0, i).trim(), song: s.slice(i + 3).trim() } : { artist: '', song: s };
+-}
+-function radioNow() {
+-	clearTimeout(radio.nowT);
+-	radio.nowT = 0;
+-	var idx = radio.idx, seq = ++radio.nowSeq, got = false;
+-	if (radio.nowOff || !sid || (radio.state !== 'wait' && radio.state !== 'play') || radioIsHls(idx)) return;
+-	ubus('zapret-manager', 'ui_radio_now', { mode: /^https?:\/\//.test(RADIO[idx][2]) ? RADIO[idx][0] : RADIO[idx][2] }).then(function (res) {
+-		if (seq !== radio.nowSeq || idx !== radio.idx) return;
+-		var c = res && res[0] === 0 ? res[1] : null;
+-		if (res && (res[0] === 3 || res[0] === 6)) { radio.nowOff = true; return; }
+-		if (c && c.ok) { got = true; radioNowSet(idx, radioIcy(c.title)); }
+-		else if (c && c.ok === false && radio.track) radioNowSet(idx, null);
+-	}, function (e) {
+-		if (e && e.rpcCode === -32002) radio.nowOff = true;
+-	}).then(function () {
+-		if (seq === radio.nowSeq && !radio.nowOff && (radio.state === 'wait' || radio.state === 'play')) radio.nowT = setTimeout(radioNow, got ? 15000 : 8000);
+-	});
+-}
+-function radioMedia() {
+-	try {
+-		if (!('mediaSession' in navigator) || !window.MediaMetadata) return;
+-		var tr = radio.track && radio.track.idx === radio.idx ? radio.track : null, st = RADIO[radio.idx][1], sn = radioSetName(radio.idx);
+-		navigator.mediaSession.metadata = new MediaMetadata(tr ? {
+-			title: tr.song || tr.artist, artist: tr.song ? tr.artist : '', album: st + (sn ? ' · ' + sn : '')
+-		} : { title: st, artist: sn || 'Радио', album: 'Zapret Manager' });
+-		if (radio.mediaSet) return;
+-		radio.mediaSet = true;
+-		navigator.mediaSession.setActionHandler('play', function () { radioStart(); });
+-		navigator.mediaSession.setActionHandler('pause', function () { radioStop(); });
+-		navigator.mediaSession.setActionHandler('stop', function () { radioStop(); });
+-		navigator.mediaSession.setActionHandler('previoustrack', function () { radioStep(-1); });
+-		navigator.mediaSession.setActionHandler('nexttrack', function () { radioStep(1); });
+-	} catch (e) {}
+-}
+-function radioBuild() {
+-	var r = radio;
+-	r.nameEl = E('span', { 'class': 'zmw-radio-name' });
+-	r.subEl = E('div', { 'class': 'zmw-radio-track', 'hidden': '' });
+-	r.pick = E('button', { 'class': 'zmw-radio-pick', 'type': 'button', 'aria-haspopup': 'true', 'aria-expanded': 'false', 'title': 'Выбрать станцию', 'click': radioMenuToggle }, [
+-		E('span', { 'class': 'zmw-radio-eq', 'aria-hidden': 'true' }, [ E('i'), E('i'), E('i') ]),
+-		icon('radio', 'zmw-radio-ico'),
+-		E('span', { 'class': 'zmw-radio-text' }, [ r.nameEl ])
+-	]);
+-	r.playBtn = E('button', { 'class': 'zmw-radio-btn zmw-radio-main', 'type': 'button', 'click': radioToggle });
+-	r.el = E('div', { 'class': 'zmw-radio', 'role': 'group', 'aria-label': 'Радио Record' }, [
+-		r.pick,
+-		r.swapBtn = E('button', { 'class': 'zmw-radio-btn zmw-radio-swap', 'type': 'button', 'hidden': '', 'click': radioSwap }, [ icon('rswap') ]),
+-		E('button', { 'class': 'zmw-radio-btn', 'type': 'button', 'aria-label': 'Предыдущая станция', 'title': 'Предыдущая станция', 'click': function () { radioStep(-1); } }, [ icon('rprev') ]),
+-		r.playBtn,
+-		E('button', { 'class': 'zmw-radio-btn', 'type': 'button', 'aria-label': 'Следующая станция', 'title': 'Следующая станция', 'click': function () { radioStep(1); } }, [ icon('rnext') ]),
+-		r.subEl
+-	]);
+-	radioPaint();
+-	if (window.ResizeObserver) {
+-		var lastW = -1;
+-		new ResizeObserver(function () { var w = r.subEl.clientWidth; if (w !== lastW) { lastW = w; radioMarquee(); } }).observe(r.subEl);
+-	}
+-	return r.el;
+-}
+-function radioPaint() {
+-	bgoPaint();
+-	if (radio.navBtn) radio.navBtn();
+-	var r = radio;
+-	if (!r.el) return;
+-	var on = r.state === 'play' || r.state === 'wait';
+-	r.el.hidden = !r.show;
+-	r.el.classList.toggle('zmw-radio-play', r.state === 'play');
+-	r.el.classList.toggle('zmw-radio-wait', r.state === 'wait');
+-	r.el.classList.toggle('zmw-radio-err', r.state === 'err');
+-	var tr = r.state === 'play' && r.track && r.track.idx === r.idx ? r.track : null;
+-	radioSub(r.state === 'wait' ? 'Подключаемся…' : r.state === 'err' ? 'Не отвечает' : tr ? tr.text : '', !!tr);
+-	r.nameEl.textContent = RADIO[r.idx][1];
+-	r.pick.title = (tr ? 'Сейчас играет: ' + tr.text + '\n' : '') + RADIO[r.idx][1] + ' — нажмите, чтобы выбрать станцию и громкость';
+-	r.playBtn.innerHTML = '';
+-	r.playBtn.appendChild(icon(on ? 'rstop' : 'rplay'));
+-	r.playBtn.setAttribute('aria-label', on ? 'Остановить' : 'Играть');
+-	r.playBtn.title = on ? 'Остановить' : 'Играть «' + RADIO[r.idx][1] + '»';
+-	var pv = r.prev >= 0 && r.prev !== r.idx ? RADIO[r.prev][1] : '';
+-	r.swapBtn.hidden = !pv;
+-	r.el.classList.toggle('zmw-radio-x4', !!pv);
+-	r.swapBtn.title = pv ? 'Вернуться к «' + pv + '»' : '';
+-	r.swapBtn.setAttribute('aria-label', pv ? 'Вернуться к станции «' + pv + '»' : 'Предыдущая выбранная станция');
+-	try { if ('mediaSession' in navigator) navigator.mediaSession.playbackState = on ? 'playing' : 'paused'; } catch (e) {}
+-	if (r.menu) radioMenuPaint();
+-}
+-function radioSub(txt, isTrack) {
+-	var r = radio;
+-	if (r.subTxt === txt) return;
+-	r.subTxt = txt;
+-	r.subEl.hidden = !txt;
+-	r.subEl.innerHTML = '';
+-	r.subEl.appendChild(E('span', { 'class': 'zmw-radio-mq' }, [ txt ]));
+-	r.subEl.classList.toggle('zmw-radio-trk', isTrack);
+-	radioMarquee();
+-}
+-function radioMarquee() {
+-	var box = radio.subEl;
+-	if (!box) return;
+-	box.classList.remove('zmw-radio-scroll');
+-	var w = box.clientWidth, d = box.scrollWidth - w;
+-	if (!w || d <= 2 || !box.classList.contains('zmw-radio-trk')) return;
+-	box.style.setProperty('--zmw-mq', -(d + 2) + 'px');
+-	box.style.setProperty('--zmw-mqt', Math.min(24, Math.max(6, d / 18 + 4)).toFixed(1) + 's');
+-	box.classList.add('zmw-radio-scroll');
+-}
+-function radioMenuOutside(ev) {
+-	if (!radio.menu) return;
+-	if (radio.menu.contains(ev.target) || radio.pick.contains(ev.target)) return;
+-	radioMenuClose();
+-}
+-function radioMenuKey(ev) { if (ev.key === 'Escape') { radioMenuClose(); try { radio.pick.focus(); } catch (e) {} } }
+-function radioMenuClose() {
+-	if (!radio.menu) return;
+-	radio.menu.remove();
+-	radio.menu = null;
+-	radio.menuPlace = null;
+-	radio.pick.setAttribute('aria-expanded', 'false');
+-	document.removeEventListener('mousedown', radioMenuOutside, true);
+-	document.removeEventListener('touchstart', radioMenuOutside, true);
+-	document.removeEventListener('keydown', radioMenuKey, true);
+-	window.removeEventListener('resize', radioMenuResize);
+-	window.removeEventListener('hashchange', radioMenuClose);
+-}
+-function radioMenuResize() {
+-	if (!radio.menu) return;
+-	if (window.innerWidth !== radio.menuW) radioMenuClose();
+-	else if (radio.menuPlace) radio.menuPlace();
+-}
+-function radioMenuPaint() {
+-	var m = radio.menu, tr = radio.state === 'play' && radio.track && radio.track.idx === radio.idx ? radio.track : null, nowEl = m.querySelector('.zmw-radio-now');
+-	nowEl.hidden = !tr;
+-	nowEl.textContent = tr ? tr.text : '';
+-	nowEl.title = tr ? tr.text : '';
+-	Array.prototype.forEach.call(m.querySelectorAll('.zmw-radio-st'), function (b) {
+-		var cur = +b.getAttribute('data-i') === radio.idx;
+-		b.classList.toggle('zmw-on', cur);
+-		b.classList.toggle('zmw-radio-live', cur && radio.state === 'play');
+-		b.setAttribute('aria-checked', cur ? 'true' : 'false');
+-	});
+-	Array.prototype.forEach.call(m.querySelectorAll('.zmw-radio-fav'), function (b) {
+-		var on = radioIsFav(+b.getAttribute('data-i'));
+-		b.classList.toggle('zmw-on', on);
+-		b.setAttribute('aria-pressed', on ? 'true' : 'false');
+-		b.title = on ? 'Убрать из избранного' : 'Добавить в избранное';
+-		b.setAttribute('aria-label', (on ? 'Убрать из избранного: ' : 'Добавить в избранное: ') + RADIO[+b.getAttribute('data-i')][1]);
+-	});
+-	var ft = m.querySelector('.zmw-radio-tab[data-set="f"] .zmw-radio-cnt');
+-	if (ft) { ft.textContent = radio.fav.length ? String(radio.fav.length) : ''; ft.hidden = !radio.fav.length; }
+-}
+-function radioMenuToggle() {
+-	if (radio.menu) { radioMenuClose(); return; }
+-	var vol = E('input', { 'type': 'range', 'min': '0', 'max': '100', 'step': '1', 'value': String(radio.vol), 'aria-label': 'Громкость' });
+-	var volTxt = E('span', { 'class': 'zmw-radio-voltxt' }, [ radio.vol + '%' ]);
+-	vol.addEventListener('input', function () {
+-		radio.vol = +vol.value;
+-		volTxt.textContent = radio.vol + '%';
+-		if (radio.audio) radio.audio.volume = radioGain(radio.vol);
+-		radioSave();
+-	});
+-	radio.tab = radioIsFav(radio.idx) ? 'f' : radioSetOf(radio.idx);
+-	var list = E('div', { 'class': 'zmw-radio-list' });
+-	var tabs = E('div', { 'class': 'zmw-radio-tabs', 'role': 'tablist' }, RADIO_SETS.map(function (t) {
+-		return E('button', { 'class': 'zmw-radio-tab' + (t.id === 'f' ? ' zmw-radio-tab-fav' : ''), 'type': 'button', 'role': 'tab', 'data-set': t.id, 'click': function () {
+-			if (radio.tab === t.id) return;
+-			radio.tab = t.id;
+-			fill();
+-		} }, t.id === 'f' ? [ icon('rstar', 'zmw-radio-tstar'), t.name, E('span', { 'class': 'zmw-radio-cnt', 'hidden': '' }) ] : [ t.name ]);
+-	}));
+-	var m = E('div', { 'class': 'zmw-radio-menu', 'role': 'menu', 'aria-label': 'Радиостанции' }, [
+-		E('div', { 'class': 'zmw-radio-menu-head' }, [ tabs ]),
+-		E('div', { 'class': 'zmw-radio-now', 'hidden': '' }),
+-		list,
+-		E('label', { 'class': 'zmw-radio-vol' }, [ E('span', {}, [ 'Громкость' ]), vol, volTxt ])
+-	]);
+-	function place() {
+-		var rc = radio.el.getBoundingClientRect(), vw = window.innerWidth, vh = window.innerHeight, bt = Math.max(8, Math.ceil(vh - rc.top + 8)), up = Math.floor(vh - bt - 8), w, h;
+-		m.style.maxWidth = (vw - 16) + 'px';
+-		m.style.maxHeight = 'none';
+-		w = m.offsetWidth;
+-		h = m.offsetHeight;
+-		m.style.left = Math.max(8, Math.min(rc.left, vw - w - 8)) + 'px';
+-		if (up >= Math.min(h, 280)) {
+-			m.style.top = '';
+-			m.style.bottom = bt + 'px';
+-			m.style.maxHeight = up + 'px';
+-		} else {
+-			m.style.bottom = '';
+-			m.style.top = '8px';
+-			m.style.maxHeight = (vh - 16) + 'px';
+-		}
+-	}
+-	function curShow() {
+-		var c = list.querySelector('.zmw-radio-st[data-i="' + radio.idx + '"]'), lr, cr;
+-		if (!c || list.scrollHeight <= list.clientHeight) return;
+-		lr = list.getBoundingClientRect(); cr = c.getBoundingClientRect();
+-		if (cr.top < lr.top || cr.bottom > lr.bottom) list.scrollTop += cr.top - lr.top - Math.max(0, (lr.height - cr.height) / 2);
+-	}
+-	function fill() {
+-		var ids = radioIdx(radio.tab), cols = window.innerWidth <= 520 ? 2 : 3;
+-		Array.prototype.forEach.call(tabs.children, function (b) {
+-			var on = b.getAttribute('data-set') === radio.tab;
+-			b.classList.toggle('zmw-on', on);
+-			b.setAttribute('aria-selected', on ? 'true' : 'false');
+-		});
+-		list.innerHTML = '';
+-		list.classList.toggle('zmw-radio-list-empty', !ids.length);
+-		if (!ids.length) {
+-			list.appendChild(E('div', { 'class': 'zmw-radio-empty' }, [
+-				E('span', { 'class': 'zmw-radio-empty-ico' }, [ icon('rstar') ]),
+-				E('div', {}, [ E('b', {}, [ 'Здесь будут ваши станции' ]), E('span', {}, [ 'Отметьте звёздочкой любимые станции на других вкладках — они соберутся здесь, а кнопки «назад» и «вперёд» в плеере будут листать только их' ]) ])
+-			]));
+-			list.style.gridTemplateRows = '';
+-		}
+-		ids.forEach(function (i) {
+-			var sn = radio.tab === 'f' ? radioSetName(i) || 'Разные станции' : '';
+-			list.appendChild(E('div', { 'class': 'zmw-radio-row' }, [
+-				E('button', { 'class': 'zmw-radio-st', 'type': 'button', 'role': 'menuitemradio', 'data-i': String(i), 'title': sn ? RADIO[i][1] + ' · ' + sn : '', 'click': function () { radioPick(i, radio.tab); radioMenuClose(); } }, [
+-					E('span', { 'class': 'zmw-radio-eq', 'aria-hidden': 'true' }, [ E('i'), E('i'), E('i') ]), E('span', {}, [ RADIO[i][1] ])
+-				]),
+-				E('button', { 'class': 'zmw-radio-fav', 'type': 'button', 'data-i': String(i), 'click': function () { favClick(i); } }, [ icon('rstar') ])
+-			]));
+-		});
+-		if (ids.length) list.style.gridTemplateRows = 'repeat(' + Math.ceil(ids.length / cols) + ', auto)';
+-		list.scrollTop = 0;
+-		if (radio.menu) { radioMenuPaint(); place(); curShow(); }
+-	}
+-	function favClick(i) {
+-		var inFav = radio.tab === 'f', pos = inFav ? radioIdx('f').indexOf(i) : -1, nx;
+-		radioFavToggle(i);
+-		if (!inFav) return;
+-		fill();
+-		nx = list.querySelectorAll('.zmw-radio-fav');
+-		try { (nx[Math.min(pos, nx.length - 1)] || tabs.querySelector('.zmw-radio-tab-fav')).focus({ preventScroll: true }); } catch (e) {}
+-	}
+-	document.body.appendChild(m);
+-	radio.menu = m;
+-	radio.menuW = window.innerWidth;
+-	radio.menuPlace = place;
+-	radio.pick.setAttribute('aria-expanded', 'true');
+-	fill();
+-	radioMenuPaint();
+-	place();
+-	curShow();
+-	document.addEventListener('mousedown', radioMenuOutside, true);
+-	document.addEventListener('touchstart', radioMenuOutside, true);
+-	document.addEventListener('keydown', radioMenuKey, true);
+-	window.addEventListener('resize', radioMenuResize);
+-	window.addEventListener('hashchange', radioMenuClose);
+-	var cur = m.querySelector('.zmw-radio-st[data-i="' + radio.idx + '"]');
+-	if (cur) try { cur.focus({ preventScroll: true }); } catch (e) {}
+-}
+-function navRadioBtn() {
+-	var b = E('button', { 'class': 'zmw-nav-btn zmw-nav-btn-wide zmw-nav-btn-radio', 'type': 'button' });
+-	function txt() { b.textContent = window.zmwRadio.shown() ? 'Скрыть радио' : 'Показать радио'; }
+-	b.addEventListener('click', function () { window.zmwRadio.set(!window.zmwRadio.shown()); txt(); });
+-	txt();
+-	radio.navBtn = txt;
+-	return b;
+-}
+-window.zmwRadio = {
+-	shown: function () { return radio.show && (typeof LOOK === 'undefined' || !!LOOK.radio); },
+-	set: function (on) {
+-		on = !!on;
+-		radio.show = on;
+-		if (!on) { radioMenuClose(); if (radio.state !== 'off') radioStop(); }
+-		radioPaint();
+-		radioSave();
+-		if (typeof LOOK !== 'undefined' && !!LOOK.radio !== on) lookSet('radio', on ? 1 : 0);
+-	}
+-};
+-
+ var mqDark = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+ var THEMES = [
+ 	{ id: 'micro', name: 'Светлая', ico: 'sun', fonts: 'Onest:wght@400;500;600;700', color: '#f4f5f8' },
+@@ -68490,9 +67753,9 @@
+ ];
+ var LOOK_ACC = [ '#2d5bff', '#7c5cff', '#0ea5e9', '#14b8a6', '#16a34a', '#f59e0b', '#f97316', '#ef4444', '#ec4899', '#64748b' ];
+ var LOOK_ZOOM = [ [ 0.9, '90%' ], [ 1, '100%' ], [ 1.1, '110%' ], [ 1.2, '120%' ] ];
+-var ANIM_RE = /^(stars|traffic|music|matrix|neon|synth|noir|metro|embers|lava|fire|metal|silk|ink|plasma|warp)$/, ANIM_HEAVY = /^(matrix|neon|synth|noir|metro|embers|lava|fire|metal|silk|ink|plasma|warp)$/, ANIM_DARK = /^(matrix|neon|synth|noir|embers|lava|fire|metal|silk|ink|plasma|warp)$/;
++var ANIM_RE = /^(stars|traffic|matrix|neon|synth|noir|metro|embers|lava|fire|metal|silk|ink|plasma|warp)$/, ANIM_HEAVY = /^(matrix|neon|synth|noir|metro|embers|lava|fire|metal|silk|ink|plasma|warp)$/, ANIM_DARK = /^(matrix|neon|synth|noir|embers|lava|fire|metal|silk|ink|plasma|warp)$/;
+ var LOOK_VIS = [ 'acc', 'tint', 'tcol', 'font', 'mono', 'rad', 'bord', 'shad', 'glass' ];
+-var LOOK_DEF = { acc: '', tint: '', tcol: '', font: 'theme', mono: 'theme', zoom: 1, dens: 'n', rad: 'md', bord: 'md', shad: 'md', ctr: 'n', motion: 1, glass: 1, radio: 1, fps: 60, dpr: 2, pause: 1, batt: 0, react: 1, bg: '', bgt: '', my: null };
++var LOOK_DEF = { acc: '', tint: '', tcol: '', font: 'theme', mono: 'theme', zoom: 1, dens: 'n', rad: 'md', bord: 'md', shad: 'md', ctr: 'n', motion: 1, glass: 1, fps: 60, dpr: 2, pause: 1, batt: 0, bg: '', bgt: '', my: null };
+ function lookPick(list, v) { return list.filter(function (x) { return x.id === v; })[0]; }
+ function lookClean(o) {
+ 	var r = {}, k;
+@@ -68509,7 +67772,7 @@
+ 	if (/^(sharp|soft|md|round)$/.test(o.rad || '')) r.rad = o.rad;
+ 	if (/^(none|md|strong|acc)$/.test(o.bord || '')) r.bord = o.bord;
+ 	if (/^(none|md|soft|deep)$/.test(o.shad || '')) r.shad = o.shad;
+-	[ 'motion', 'glass', 'radio', 'pause', 'batt', 'react' ].forEach(function (b) { if (o[b] === 0 || o[b] === 1) r[b] = o[b]; });
++	[ 'motion', 'glass', 'pause', 'batt' ].forEach(function (b) { if (o[b] === 0 || o[b] === 1) r[b] = o[b]; });
+ 	if ([ 15, 30, 60 ].indexOf(+o.fps) >= 0) r.fps = +o.fps;
+ 	if (+o.dpr === 1 || +o.dpr === 2) r.dpr = +o.dpr;
+ 	if ((o.bg === '0' || ANIM_RE.test(o.bg || '')) && /^[a-z]+$/.test(o.bgt || '')) { r.bg = o.bg; r.bgt = o.bgt; }
+@@ -68546,7 +67809,6 @@
+ 	lookSave();
+ 	lookApply();
+ 	if (k === 'batt' || k === 'fps' || k === 'dpr' || k === 'pause') dustSync();
+-	if (k === 'react') radioCorsCheck();
+ }
+ function lookSync() {
+ 	fetch('/zm/look.json?t=' + Date.now(), { cache: 'no-store', credentials: 'omit' }).then(function (r) { return r.ok ? r.text() : ''; }).then(function (t) {
+@@ -68598,8 +67860,6 @@
+ 	at('data-zm-tint', L.tint || null);
+ 	at('data-zm-motion', L.motion ? null : '0');
+ 	at('data-zm-glass', L.glass ? null : '0');
+-	at('data-zm-radio', L.radio ? null : '0');
+-	if (!L.radio && typeof radio !== 'undefined' && radio && radio.state && radio.state !== 'off') radioStop();
+ 	lookVars();
+ 	if (typeof dust !== 'undefined' && dust) {
+ 		if (L.glass && !glass) glassStart();
+@@ -68676,7 +67936,6 @@
+ 	{ id: '', name: 'Выкл', title: 'Фон без анимации' },
+ 	{ id: 'stars', name: 'Созвездие', title: 'Точки соединяются линиями и тянутся к курсору' },
+ 	{ id: 'traffic', name: 'Трафик', title: 'Пакеты летят по линиям: слева направо — входящий трафик роутера, справа налево — исходящий' },
+-	{ id: 'music', name: 'Музыка', title: 'Волна внизу экрана всегда танцует под радио панели' },
+ 	{ id: 'matrix', name: 'Матрица', title: 'Падающие символы — фон темы «Матрица»' },
+ 	{ id: 'neon', name: 'Неон', title: 'Неоновые росчерки — фон темы «Неон»' },
+ 	{ id: 'synth', name: 'Синтвейв', title: 'Солнце и бегущая сетка — фон темы «Синтвейв»' },
+@@ -68720,7 +67979,7 @@
+ 	bgFromRouter();
+ }
+ function animKind() { var v = sget(K_ANIM); if (lookOnBattery()) return ''; if (v === '1') return 'stars'; if (v === 'theme') return themeFx(); return ANIM_RE.test(v || '') ? v : ''; }
+-function animReact() { var k = animKind(); return !!k && (k === 'music' || !!LOOK.react); }
++
+ var ZMFX = (function () {
+ 	'use strict';
+ 	var TAU = Math.PI * 2;
+@@ -69120,33 +68379,8 @@
+ 	};
+ 	return { ENG: ENG, MUTE: { lvl: 0, bass: 0, high: 0, kick: 0 } };
+ })();
+-var bgAuS = { lvl: 0, bass: 0, high: 0, kick: 0, slow: 0, t: 0, lb: -9, f: null };
+-function bgAu(dt) {
+-	var s = bgAuS, an = radAud.an, i, n, hz, f, v, b = 0, nb = 0, hh = 0, nh = 0, all = 0, na = 0, adj, k = Math.min(1, dt * 10);
+-	s.t += dt;
+-	s.kick *= Math.exp(-dt * 6);
+-	if (!radioLive() || !an || !radAud.ac) { s.lvl -= s.lvl * k; s.bass -= s.bass * k; s.high -= s.high * k; return s; }
+-	n = an.frequencyBinCount;
+-	if (!s.f || s.f.length !== n) s.f = new Float32Array(n);
+-	an.getFloatFrequencyData(s.f);
+-	hz = radAud.ac.sampleRate / an.fftSize;
+-	adj = -20 * Math.log(Math.max(radioGain(radio.vol), 0.001)) / Math.LN10;
+-	for (i = 1; i < n; i++) {
+-		f = i * hz;
+-		if (f > 12000) break;
+-		v = s.f[i];
+-		v = isFinite(v) ? Math.max(0, Math.min(1, (v + adj + 85) / 55)) : 0;
+-		if (f < 160) { b += v; nb++; } else if (f > 4000) { hh += v; nh++; }
+-		all += v; na++;
+-	}
+-	b = nb ? b / nb : 0; hh = nh ? hh / nh : 0; all = na ? all / na : 0;
+-	s.bass += (b - s.bass) * Math.min(1, dt * 14);
+-	s.high += (hh - s.high) * Math.min(1, dt * 10);
+-	s.lvl += (Math.min(1, all * 1.6) - s.lvl) * Math.min(1, dt * 8);
+-	if (b - s.slow > 0.08 && b > 0.3 && s.t - s.lb > 0.26) { s.kick = 1; s.lb = s.t; }
+-	s.slow += (b - s.slow) * Math.min(1, dt * 2.5);
+-	return s;
+-}
++
++
+ var bgPv = { list: [], raf: 0, last: 0 };
+ function bgPvAdd(cv, id) {
+ 	if (!ZMFX.ENG[id]) return;
+@@ -69193,32 +68427,15 @@
+ 	paint();
+ 	return { el: grid, paint: paint };
+ }
+-function animReactRow(onChange) {
+-	var inp = E('input', { 'type': 'checkbox', 'class': 'zmw-bg-chk' });
+-	var row = E('label', { 'class': 'zmw-bg-react' }, [ inp, E('span', { 'class': 'zmw-bg-txt' }, [ E('b', {}, [ 'Реагировать на музыку радио' ]) ]) ]);
+-	row.addEventListener('click', function (e) { e.stopPropagation(); });
+-	inp.addEventListener('change', function () {
+-		if (animKind() !== 'music') { lookSet('react', inp.checked ? 1 : 0); radioCorsCheck(); }
+-		paint();
+-		if (onChange) onChange();
+-	});
+-	function paint() {
+-		var k = animKind(), lock = k === 'music';
+-		inp.checked = lock || !!LOOK.react;
+-		inp.disabled = lock || !k;
+-	}
+-	paint();
+-	return { el: row, paint: paint };
+-}
++
+ var bgo = null;
+ function bgoEnter() {
+ 	if (bgo || !animKind()) return;
+ 	closeThemeMenu();
+-	var play = E('button', { 'type': 'button', 'class': 'zmw-bgo-btn', 'click': function (e) { e.stopPropagation(); radioToggle(); } });
+ 	var back = E('button', { 'type': 'button', 'class': 'zmw-bgo-btn zmw-bgo-back', 'click': function (e) { e.stopPropagation(); bgoExit(); } }, [ icon('eye'), E('span', {}, [ 'Вернуть панель' ]) ]);
+-	var pill = E('div', { 'class': 'zmw-bgo', 'role': 'toolbar', 'aria-label': 'Только фон' }, [ play, back ]);
++	var pill = E('div', { 'class': 'zmw-bgo', 'role': 'toolbar', 'aria-label': 'Только фон' }, [ back ]);
+ 	var hint = E('div', { 'class': 'zmw-bgo-hint', 'role': 'status' }, [ 'Только фон. Клик в любом месте или Esc — вернуть панель' ]);
+-	bgo = { pill: pill, hint: hint, play: play, t: 0, h: 0 };
++	bgo = { pill: pill, hint: hint, t: 0, h: 0 };
+ 	document.body.appendChild(pill);
+ 	document.body.appendChild(hint);
+ 	document.documentElement.classList.add('zm-bg-only');
+@@ -69257,15 +68474,7 @@
+ 	document.documentElement.classList.remove('zm-bg-only');
+ 	document.documentElement.classList.remove('zm-bgo-idle');
+ }
+-function bgoPaint() {
+-	if (!bgo) return;
+-	var on = radio.state === 'play' || radio.state === 'wait', show = !!(window.zmwRadio && window.zmwRadio.shown());
+-	bgo.play.hidden = !show;
+-	bgo.play.innerHTML = '';
+-	bgo.play.appendChild(icon(on ? 'rstop' : 'rplay'));
+-	bgo.play.appendChild(E('span', {}, [ RADIO[radio.idx] ? RADIO[radio.idx][1] : 'Радио' ]));
+-	bgo.play.setAttribute('aria-label', on ? 'Остановить радио' : 'Включить радио');
+-}
++
+ function bgCss(name, fb) {
+ 	var v = '', x = document.createElement('canvas').getContext('2d'), m;
+ 	try { v = getComputedStyle(document.documentElement).getPropertyValue(name).trim(); } catch (e) {}
+@@ -69443,113 +68652,7 @@
+ 		};
+ 	}
+ 
+-	function music() {
+-		var M = 72, L = [ new Float32Array(M), new Float32Array(M), new Float32Array(M) ], raw = new Float32Array(M), lv = new Float32Array(M), slow = new Float32Array(M), mv = new Float32Array(M), fdB = null,
+-			ref = -40, sparks = [], rings = [], bass = 0, hi = 0, bassSlow = 0, lastBeat = 0, t = 0, live = false;
+-		function dbAt(f) {
+-			var hz = radAud.ac.sampleRate / radAud.an.fftSize, i = Math.min(fdB.length - 2, Math.max(1, f / hz)), k = i | 0, r = i - k, a = fdB[k], b = fdB[k + 1];
+-			if (!isFinite(a)) a = -160;
+-			if (!isFinite(b)) b = -160;
+-			return a * (1 - r) + b * r;
+-		}
+-		return {
+-			draw: function (dt) {
+-				var i, j, k, q, p, dd, v, top, nb = 0, nh = 0, sb = 0, sh = 0, bv = 0;
+-				t += dt;
+-				live = radioLive();
+-				if (live) {
+-					if (!fdB || fdB.length !== radAud.an.frequencyBinCount) fdB = new Float32Array(radAud.an.frequencyBinCount);
+-					radAud.an.getFloatFrequencyData(fdB);
+-					var adj = -20 * Math.log(Math.max(radioGain(radio.vol), 0.001)) / Math.LN10;
+-					top = -200;
+-					for (i = 0; i < M; i++) {
+-						p = i / (M - 1); dd = Math.abs(p - 0.5) * 2;
+-						raw[i] = dbAt(35 * Math.pow(11000 / 35, dd)) + adj + 20 * dd;
+-						if (raw[i] > top) top = raw[i];
+-					}
+-					ref = top > ref ? ref + (top - ref) * Math.min(1, dt * 6) : Math.max(-120, ref - dt * 3);
+-				}
+-				for (i = 0; i < M; i++) {
+-					p = i / (M - 1); dd = Math.abs(p - 0.5) * 2;
+-					v = live ? Math.max(0, Math.min(1, (raw[i] - ref + 40) / 40)) : 0;
+-					v = v * v;
+-					slow[i] += (v - slow[i]) * Math.min(1, dt * 1.5);
+-					lv[i] = Math.min(1, 0.4 * v + 1.8 * Math.max(0, v - slow[i]));
+-					mv[i] = v;
+-					if (dd < 0.15) { sb += lv[i]; bv += v; nb++; }
+-					else if (dd > 0.7) { sh += lv[i]; nh++; }
+-				}
+-				bv = nb ? bv / nb : 0;
+-				bass += ((nb ? sb / nb : 0) - bass) * Math.min(1, dt * 14);
+-				hi += ((nh ? sh / nh : 0) - hi) * Math.min(1, dt * 10);
+-				if (live && bv - bassSlow > 0.09 && bv > 0.25 && t - lastBeat > 0.26) {
+-					lastBeat = t;
+-					rings.push({ r: 30, a: 0.5 });
+-					k = 5 + ((bass * 8) | 0);
+-					for (i = 0; i < k; i++) {
+-						var sx = w / 2 + (Math.random() - 0.5) * w * 0.7;
+-						sparks.push({ x: sx, y: h - L[0][Math.max(0, Math.min(M - 1, Math.round(sx / w * (M - 1))))] * h, vx: (Math.random() - 0.5) * 30, vy: -40 - Math.random() * 90, r: 1 + Math.random() * 2.2, life: 1, d: 1.6 + Math.random() * 1.6, b: Math.random() < 0.5 });
+-					}
+-					if (sparks.length > 160) sparks.splice(0, sparks.length - 160);
+-				}
+-				bassSlow += (bv - bassSlow) * Math.min(1, dt * 2.5);
+-				var sp = [ 18, 8, 3.5 ];
+-				for (q = 0; q < 3; q++) {
+-					for (i = 0; i < M; i++) {
+-						p = i / (M - 1);
+-						var tg = 0.025 + 0.012 * Math.sin(t * 0.9 + p * 7 + q * 1.7) + 0.008 * Math.sin(t * 1.7 - p * 13) + (q === 2 ? mv[i] * 0.12 : lv[i] * (q === 0 ? 0.26 : 0.2));
+-						L[q][i] += (tg - L[q][i]) * Math.min(1, dt * sp[q]);
+-					}
+-					for (j = 0; j < 2; j++) for (i = 1; i < M - 1; i++) L[q][i] = (L[q][i - 1] + L[q][i] * 2 + L[q][i + 1]) / 4;
+-				}
+-				var g = ctx.createRadialGradient(w / 2, h + 60, 10, w / 2, h + 60, Math.max(w, h) * (0.35 + bass * 0.45));
+-				g.addColorStop(0, bgRgba(P.a, ((dk ? 0.18 : 0.12) + bass * (dk ? 0.3 : 0.2)).toFixed(3)));
+-				g.addColorStop(1, bgRgba(P.a, 0));
+-				ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+-				if (dk) ctx.globalCompositeOperation = 'lighter';
+-				var cols = [ P.a, P.c, P.b ];
+-				for (q = 2; q >= 0; q--) {
+-					var top = h, pts = [];
+-					for (i = 0; i < M; i++) { var yy = h - L[q][i] * h - (q === 0 ? 0 : 6 * q); pts.push([ i / (M - 1) * w, yy ]); if (yy < top) top = yy; }
+-					ctx.beginPath(); ctx.moveTo(0, h + 2); ctx.lineTo(pts[0][0], pts[0][1]);
+-					for (i = 1; i < M - 1; i++) ctx.quadraticCurveTo(pts[i][0], pts[i][1], (pts[i][0] + pts[i + 1][0]) / 2, (pts[i][1] + pts[i + 1][1]) / 2);
+-					ctx.lineTo(w, pts[M - 1][1]); ctx.lineTo(w, h + 2); ctx.closePath();
+-					var fg = ctx.createLinearGradient(0, top, 0, h);
+-					fg.addColorStop(0, bgRgba(cols[q], dk ? 0.3 : 0.22));
+-					fg.addColorStop(1, bgRgba(cols[q], dk ? 0.04 : 0.03));
+-					ctx.fillStyle = fg; ctx.fill();
+-					ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+-					for (i = 1; i < M - 1; i++) ctx.quadraticCurveTo(pts[i][0], pts[i][1], (pts[i][0] + pts[i + 1][0]) / 2, (pts[i][1] + pts[i + 1][1]) / 2);
+-					ctx.lineWidth = q === 0 ? 2 : 1.3;
+-					ctx.strokeStyle = bgRgba(cols[q], dk ? 0.75 : 0.6);
+-					ctx.stroke();
+-				}
+-				for (i = rings.length - 1; i >= 0; i--) {
+-					var rg = rings[i];
+-					rg.r += dt * (260 + rg.r * 0.9); rg.a -= dt * 0.45;
+-					if (rg.a <= 0) { rings.splice(i, 1); continue; }
+-					ctx.beginPath(); ctx.arc(w / 2, h + 20, rg.r, Math.PI, 0);
+-					ctx.lineWidth = 2; ctx.strokeStyle = bgRgba(P.b, rg.a.toFixed(3)); ctx.stroke();
+-				}
+-				for (i = sparks.length - 1; i >= 0; i--) {
+-					var s = sparks[i], sc = s.b ? P.b : P.a;
+-					s.life -= dt / s.d;
+-					if (s.life <= 0) { sparks.splice(i, 1); continue; }
+-					s.vy *= 0.992; s.vx += Math.sin(t * 2 + s.x * 0.02) * 6 * dt;
+-					s.x += s.vx * dt; s.y += s.vy * dt;
+-					ctx.beginPath(); ctx.arc(s.x, s.y, s.r * (0.6 + s.life * 0.6), 0, 6.2832); ctx.fillStyle = bgRgba(sc, (s.life * 0.85).toFixed(3)); ctx.fill();
+-					ctx.beginPath(); ctx.arc(s.x, s.y, s.r * 3.2, 0, 6.2832); ctx.fillStyle = bgRgba(sc, (s.life * 0.12).toFixed(3)); ctx.fill();
+-				}
+-				if (hi > 0.08) {
+-					for (i = 0; i < 3; i++) {
+-						ctx.beginPath(); ctx.arc(Math.random() * w, h * (0.25 + Math.random() * 0.45), 0.8 + Math.random(), 0, 6.2832);
+-						ctx.fillStyle = bgRgba(P.b, Math.min(0.6, hi * 2.2).toFixed(3)); ctx.fill();
+-					}
+-				}
+-				ctx.globalCompositeOperation = 'source-over';
+-			}
+-		};
+-	}
++	
+ 
+ 	function mtx() {
+ 		var fs = 16, drops = [], acc = 0, chars = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワン0123456789ZAPRETMANAGER';
+@@ -69731,7 +68834,7 @@
+ 		};
+ 	}
+ 	var tfx = '';
+-	eng = kind === 'matrix' ? mtx() : kind === 'neon' ? neon() : kind === 'synth' ? synth() : kind === 'noir' ? noir() : kind === 'metro' ? metro() : kind === 'traffic' ? traffic() : kind === 'music' ? music() : kind !== 'stars' && ZMFX.ENG[kind] ? zfx(kind) : stars();
++	eng = kind === 'matrix' ? mtx() : kind === 'neon' ? neon() : kind === 'synth' ? synth() : kind === 'noir' ? noir() : kind === 'metro' ? metro() : kind === 'traffic' ? traffic() : kind !== 'stars' && ZMFX.ENG[kind] ? zfx(kind) : stars();
+ 	function size() {
+ 		var d = LOOK.dpr === 2 ? Math.min(window.devicePixelRatio || 1, 2) : 1;
+ 		w = window.innerWidth; h = window.innerHeight;
+@@ -69748,7 +68851,7 @@
+ 		var dt = last ? Math.min(0.08, (now - last) / 1000) : 0.033;
+ 		last = now;
+ 		if (!eng.keep) ctx.clearRect(0, 0, w, h);
+-		var au = LOOK.react && kind !== 'music' ? bgAu(dt) : null;
++		var au = null;
+ 		if (eng.au) eng.draw(dt, au);
+ 		else eng.draw(au ? dt * (1 + 1.2 * au.lvl + 1.8 * au.kick) : dt);
+ 	}
+@@ -69872,12 +68975,10 @@
+ 	dustSync();
+ 	animMenuPaint();
+ 	if (!animKind()) bgoExit();
+-	radioCorsCheck();
+ }
+ function animMenuPaint() {
+ 	if (!animMenuEls || !themeMenuEl) return;
+ 	animMenuEls.pk.paint();
+-	animMenuEls.rr.paint();
+ 	animMenuEls.hide.disabled = !animKind();
+ }
+ var themeMenuEl = null;
+@@ -69956,7 +69057,6 @@
+ 	dustSync();
+ 	animMenuPaint();
+ 	if (!animKind()) bgoExit();
+-	radioCorsCheck();
+ 	if (fresh) toast('«Своя тема» создана из того, что сейчас на экране. Меняйте её в разделе «Оформление» — всё сохранится само.', 'info');
+ 	if (lookPageRender) lookPageRender();
+ }
+@@ -69967,11 +69067,11 @@
+ 	var cur = themeEffective();
+ 	var items = [ E('div', { 'class': 'zmw-theme-group' }, [ 'Тема оформления' ]) ];
+ 	THEMES.forEach(function (t) { items.push(themeOpt(t, cur)); });
+-	var pk = animPicker(function () { animMenuPaint(); }), rr = animReactRow();
++	var pk = animPicker(function () { animMenuPaint(); });
+ 	var hide = E('button', { 'type': 'button', 'class': 'zmw-bg-hide', 'title': 'Убрать с экрана всё, кроме живого фона. Вернуть — клик в любом месте или Esc', 'click': function (e) { e.stopPropagation(); bgoEnter(); } }, [ icon('eyeOff'), E('span', {}, [ 'Скрыть панель' ]) ]);
+-	items.push(E('div', { 'class': 'zmw-bg-head' }, [ E('span', { 'class': 'zmw-bg-title' }, [ 'Живой фон' ]), hide ]), pk.el, rr.el);
++	items.push(E('div', { 'class': 'zmw-bg-head' }, [ E('span', { 'class': 'zmw-bg-title' }, [ 'Живой фон' ]), hide ]), pk.el);
+ 	themeMenuEl = E('div', { 'class': 'zmw-theme-menu', 'role': 'menu' }, items);
+-	animMenuEls = { pk: pk, rr: rr, hide: hide };
++	animMenuEls = { pk: pk, hide: hide };
+ 	animMenuPaint();
+ 	function themeOpt(t, cur) {
+ 		return E('button', {
+@@ -70195,9 +69295,9 @@
+ 			var ak = animKind();
+ 			var lvl = !ak ? 0 : (L.fps / 30) * (L.dpr === 2 ? 2.5 : 1) * (ANIM_HEAVY.test(ak) ? 1.6 : 1), bar = Math.min(100, Math.round(lvl * 28)) || 2;
+ 			var batN = !navigator.getBattery;
+-			var lpk = animPicker(function () { paint(); }), lrr = animReactRow(function () { paint(); });
++			var lpk = animPicker(function () { paint(); });
+ 			kids.push(lookCard('Живой фон', 'Анимация за карточками панели. Фон входит в тему: при выборе темы ставится её родной, а «Своя тема» запоминает ваш.', [
+-				E('div', { 'class': 'zm-lk-bgpick' }, [ E('div', { 'class': 'zm-lk-bgname' }, [ ak ? 'Сейчас: ' + ANIMS.filter(function (a) { return a.id === ak; })[0].name : 'Сейчас: фон выключен' ]), lpk.el, lrr.el,
++				E('div', { 'class': 'zm-lk-bgpick' }, [ E('div', { 'class': 'zm-lk-bgname' }, [ ak ? 'Сейчас: ' + ANIMS.filter(function (a) { return a.id === ak; })[0].name : 'Сейчас: фон выключен' ]), lpk.el,
+ 					E('button', { 'type': 'button', 'class': 'cbi-button', 'disabled': ak ? null : '', 'click': function () { bgoEnter(); } }, [ 'Скрыть панель — оставить только фон' ]) ])
+ 			]));
+ 			kids.push(lookCard('Плавность', 'Эти настройки ваши личные: они не входят в тему и не сбрасываются при её смене.', [
+@@ -70215,7 +69315,6 @@
+ 				lookRow('Контраст текста', lookSeg([ [ 'n', 'Обычный' ], [ 'h', 'Повышенный' ] ], L.ctr, function (v) { lookSet('ctr', v); paint(); })),
+ 				E('p', { 'class': 'zm-hint' }, [ 'Масштаб меняет страницы целиком — текст, кнопки и отступы, как масштаб в браузере, но меню и заголовок остаются прежними. Повышенный контраст делает серые подписи и подсказки темнее на светлых темах и светлее на тёмных.' ]),
+ 				lookSw(!!L.motion, 'Анимации интерфейса', 'Плавное появление, мигающие точки статуса, переходы. Выключите — панель станет полностью статичной. Индикаторы загрузки крутятся всегда.', function () { lookSet('motion', L.motion ? 0 : 1); paint(); }),
+-				lookSw(window.zmwRadio.shown(), 'Радио в боковом меню', 'Мини-плеер под меню. Выключите — плеер скроется, а играющее радио остановится.', function () { window.zmwRadio.set(!window.zmwRadio.shown()); paint(); })
+ 			]));
+ 		}
+ 		var pasteBox = null;
+@@ -70230,7 +69329,6 @@
+ 					LOOK.my.a = themeFxOf(themeById(LOOK.my.b));
+ 					b = themeById(LOOK.my.b);
+ 				}
+-				if (!radio.show) window.zmwRadio.set(true);
+ 				setTheme(pref);
+ 				toast(b ? 'Своя тема сброшена — теперь она как «' + b.name + '»' : 'Оформление сброшено — тема такая, как задумана', 'info');
+ 			} }, [ lookResetAsk ? 'Нажмите ещё раз, чтобы сбросить' : 'Сбросить оформление' ]),
+@@ -70249,7 +69347,6 @@
+ 			try { o = JSON.parse(ta.value); } catch (e) { toast('Это не похоже на настройки оформления', 'error'); return; }
+ 			if (!o || typeof o !== 'object' || !o.look) { toast('Это не похоже на настройки оформления', 'error'); return; }
+ 			LOOK = lookClean(o.look); lookSave();
+-			if (radio.show !== !!LOOK.radio) window.zmwRadio.set(!!LOOK.radio);
+ 			th = o.theme === 'minimal' ? 'micro' : o.theme === 'blocks' ? 'contrast' : o.theme;
+ 			if (o.anim === '0' || o.anim === 'theme' || o.anim === '1' || ANIM_RE.test(o.anim || '')) { sset(K_ANIM, o.anim, true); animMark(); bgKeep(); }
+ 			if (th && (th === 'auto' || themeById(th))) setTheme(th, true);
+@@ -70636,7 +69733,6 @@
+ 	});
+ 	nav.appendChild(E('div', { 'class': 'zmw-nav-editfoot' }, [
+ 		E('button', { 'class': 'zmw-nav-btn zmw-nav-btn-wide', 'type': 'button', 'click': function () { navUninstalled(); } }, [ 'Скрыть неустановленные' ]),
+-		navRadioBtn(),
+ 		E('button', { 'class': 'zmw-nav-btn', 'type': 'button', 'click': function () { navAll(); } }, [ 'Показать все' ]),
+ 		E('button', { 'class': 'zmw-nav-btn zmw-nav-btn-done', 'type': 'button', 'click': function () { navDone(); } }, [ 'Готово' ])
+ 	]));
+@@ -70660,7 +69756,6 @@
+ 		updateEl,
+ 		nav,
+ 		E('div', { 'class': 'zmw-side-foot' }, [
+-			radioBuild(),
+ 			deviceEl,
+ 			memEl
+ 		])
+@@ -71161,9 +70256,6 @@
+ }
+ 
+ function freshLogin(note, kind) {
+-	radioMenuClose();
+-	if (radio.state !== 'off') radioStop();
+-	radio.synced = false;
+ 	dropCaches();
+ 	var shown = false;
+ 	var show = function () { if (!shown) { shown = true; showLogin(note, kind); } };
+@@ -71209,7 +70301,6 @@
+ 	loadShellInfo();
+ 	refreshShellStatus();
+ 	refreshMemory();
+-	radioSync();
+ 	route();
+ }
+ 
+@@ -71526,7 +70617,6 @@
+ .zmw-nav-editing .zmw-nav-editfoot { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; padding: 10px 4px 4px; }
+ .zmw-nav-editfoot .zmw-nav-btn { min-width: 0; padding: 8px 10px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+ .zmw-nav-editfoot .zmw-nav-btn-wide { grid-column: 1 / -1; }
+-.zmw-nav-editfoot .zmw-nav-btn-radio { padding: 4px 10px; font-size: 12px; }
+ .zmw-nav-editfoot .zmw-nav-btn-done { color: #fff; background: var(--grad); border-color: transparent; }
+ .zmw-nav-editfoot .zmw-nav-btn-done:hover { color: #fff; border-color: transparent; filter: brightness(1.08); }
+ .zmw-nav-btn { border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2); border-radius: 9px; padding: 6px 10px; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+@@ -71610,104 +70700,9 @@
+ .zmw-side .zmw-mem-val { font-size: 12px; line-height: 1.3; color: var(--text); overflow: hidden; text-overflow: ellipsis; }
+ .zmw-side .zmw-mem-val.zmw-mem-fit { font-size: 10.5px; letter-spacing: -.02em; }
+ .zmw-side .zmw-mem-bar { height: 4px; }
+-.zmw-radio { display: flex; flex-wrap: wrap; align-items: center; gap: 0; padding: 4px 2px 4px 3px; border-radius: 11px; background: var(--surface-2); border: 1px solid var(--border); min-width: 0; }
+-.zmw-radio[hidden] { display: none; }
+-.zmw-radio-pick { flex: 1; min-width: 0; display: flex; align-items: center; gap: 7px; padding: 3px 4px; margin: 0; border: 0; border-radius: 8px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+-.zmw-radio-pick:hover { background: var(--surface-3); }
+-.zmw-radio-pick:focus-visible, .zmw-radio-btn:focus-visible, .zmw-radio-st:focus-visible { outline: none; box-shadow: var(--ring); }
+-.zmw-radio-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+-.zmw-radio-track { flex: 1 1 100%; min-width: 0; box-sizing: border-box; margin: -1px 5px 2px; font-size: 11px; line-height: 1.25; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+-.zmw-radio-track[hidden] { display: none; }
+-.zmw-radio-trk { color: var(--text-2); }
+-.zmw-radio-scroll { text-overflow: clip; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 10px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 10px), transparent); }
+-.zmw-radio-scroll .zmw-radio-mq { display: inline-block; padding-right: 2px; animation: zmw-mq var(--zmw-mqt, 8s) ease-in-out infinite alternate; }
+ @keyframes zmw-mq { 0%, 18% { transform: translateX(0); } 82%, 100% { transform: translateX(var(--zmw-mq, 0)); } }
+-.zmw-radio-now { flex: none; width: 0; min-width: 100%; box-sizing: border-box; padding: 0 7px 5px; font-size: 12.5px; line-height: 1.3; color: var(--text-2); overflow-wrap: anywhere; }
+-.zmw-radio-now[hidden] { display: none; }
+-.zmw-radio-now::before { content: 'Играет: '; color: var(--muted); }
+-.zmw-radio-name { font-size: 12.5px; font-weight: 650; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+-.zmw-radio-ico { width: 16px; height: 16px; flex: none; color: var(--muted); }
+-.zmw-radio-eq { display: none; align-items: flex-end; gap: 2px; width: 13px; height: 14px; flex: none; }
+-.zmw-radio-eq i { display: block; width: 3px; height: 40%; border-radius: 2px; background: var(--grad); }
+-.zmw-radio-play .zmw-radio-pick .zmw-radio-eq, .zmw-radio-wait .zmw-radio-pick .zmw-radio-eq { display: flex; }
+-.zmw-radio-play .zmw-radio-pick .zmw-radio-ico, .zmw-radio-wait .zmw-radio-pick .zmw-radio-ico { display: none; }
+-.zmw-radio-play .zmw-radio-eq i { animation: zmw-eq 1s ease-in-out infinite; }
+-.zmw-radio-play .zmw-radio-eq i:nth-child(2) { animation-duration: .8s; animation-delay: -.3s; }
+-.zmw-radio-play .zmw-radio-eq i:nth-child(3) { animation-duration: 1.15s; animation-delay: -.6s; }
+-.zmw-radio-wait .zmw-radio-eq i { animation: zmw-eqwait 1s ease-in-out infinite; }
+-.zmw-radio-wait .zmw-radio-eq i:nth-child(2) { animation-delay: .15s; }
+-.zmw-radio-wait .zmw-radio-eq i:nth-child(3) { animation-delay: .3s; }
+-@keyframes zmw-eq { 0%, 100% { height: 30%; } 50% { height: 100%; } }
+ @keyframes zmw-eqwait { 0%, 100% { opacity: .35; height: 35%; } 50% { opacity: 1; height: 55%; } }
+-.zmw-radio-err .zmw-radio-track { color: var(--warn); }
+-.zmw-radio-btn { width: 32px; height: 34px; flex: none; display: grid; place-items: center; padding: 0; margin: 0; border: 0; border-radius: 8px; background: transparent; color: var(--text-2); cursor: pointer; transition: background .15s, color .15s, transform .1s; }
+-.zmw-radio-btn:hover { background: var(--surface-3); color: var(--text); }
+-.zmw-radio-btn:active { transform: scale(.92); }
+-.zmw-radio-btn .zmw-i { width: 21px; height: 21px; }
+-.zmw-radio-main .zmw-i { width: 23px; height: 23px; }
+-.zmw-radio-play .zmw-radio-main, .zmw-radio-wait .zmw-radio-main { color: var(--a1); }
+-.zmw-radio-menu { position: fixed; z-index: 120; box-sizing: border-box; display: flex; flex-direction: column; max-height: calc(100vh - 16px); overflow: hidden; overscroll-behavior: contain; padding: 7px 6px 5px; border-radius: 12px; background: var(--surface-solid); border: 1px solid var(--border-2); box-shadow: var(--shadow-lg); color: var(--text); font: 13px/1.3 var(--font); }
+-.zmw-radio-menu-head { display: flex; flex: none; align-items: baseline; gap: 10px; padding: 0 7px 4px; }
+-.zmw-radio-menu-head b { font-size: 14px; }
+-.zmw-radio-tabs { display: flex; align-items: flex-end; gap: 18px; }
+-.zmw-radio-tab { -webkit-appearance: none; appearance: none; margin: 0; padding: 0 0 5px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: var(--muted); font: 600 14px/1.3 var(--font); cursor: pointer; white-space: nowrap; transition: color .15s, border-color .15s; }
+-.zmw-radio-tab:hover { color: var(--text); }
+-.zmw-radio-tab.zmw-on { color: var(--text); font-weight: 700; border-bottom-color: var(--a1); }
+-.zmw-radio-tab:focus-visible { outline: none; box-shadow: var(--ring); border-radius: 4px; }
+-.zmw-radio-menu { width: max-content; }
+-.zmw-radio-list { display: grid; grid-auto-flow: column; grid-auto-columns: max-content; column-gap: 2px; padding-top: 2px; flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+-.zmw-radio-list .zmw-radio-st { width: 100%; padding-right: 10px; }
+-.zmw-radio-st { display: flex; align-items: center; gap: 7px; min-width: 0; box-sizing: border-box; padding: 3px 8px; margin: 0; border: 0; border-radius: 6px; background: transparent; color: var(--text-2); font: 500 13.5px/1.25 var(--font); text-align: left; cursor: pointer; }
+-.zmw-radio-st span:last-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+-.zmw-radio-st:hover { background: var(--surface-2); color: var(--text); }
+-.zmw-radio-st .zmw-radio-eq { display: flex; visibility: hidden; }
+-.zmw-radio-st.zmw-on { background: var(--grad-soft); color: var(--text); font-weight: 650; }
+-.zmw-radio-st.zmw-on .zmw-radio-eq { visibility: visible; }
+-.zmw-radio-st.zmw-radio-live .zmw-radio-eq i { animation: zmw-eq 1s ease-in-out infinite; }
+-.zmw-radio-st.zmw-radio-live .zmw-radio-eq i:nth-child(2) { animation-duration: .8s; animation-delay: -.3s; }
+-.zmw-radio-st.zmw-radio-live .zmw-radio-eq i:nth-child(3) { animation-duration: 1.15s; animation-delay: -.6s; }
+-.zmw-radio-vol { display: flex; flex: none; align-items: center; gap: 10px; margin-top: 4px; padding: 6px 7px 1px; border-top: 1px solid var(--border); font-size: 12.5px; color: var(--muted); }
+-.zmw-radio-vol input { flex: 1; min-width: 0; margin: 0; accent-color: var(--a1); }
+-.zmw-radio-voltxt { width: 36px; text-align: right; font-variant-numeric: tabular-nums; color: var(--text-2); }
+-.zmw-radio-swap[hidden] { display: none; }
+-.zmw-radio-x4 .zmw-radio-btn { width: 28px; }
+-.zmw-radio-x4 .zmw-radio-pick { gap: 6px; padding-right: 2px; }
+-.zmw-radio-x4:not(.zmw-radio-play):not(.zmw-radio-wait) .zmw-radio-pick .zmw-radio-ico { display: none; }
+-.zmw-radio-swap .zmw-i { width: 19px; height: 19px; }
+-.zmw-radio-swap:hover { color: var(--a1); }
+-.zmw-radio-tab-fav { display: inline-flex; align-items: center; gap: 5px; }
+-.zmw-radio-tstar { width: 15px; height: 15px; flex: none; margin-top: -1px; color: #f5a524; fill: currentColor; stroke-width: 1.4; }
+-.zmw-radio-cnt { min-width: 18px; height: 18px; box-sizing: border-box; padding: 0 5px; border-radius: 9px; background: var(--surface-3); color: var(--text-2); font: 650 11px/18px var(--font); text-align: center; font-variant-numeric: tabular-nums; }
+-.zmw-radio-cnt[hidden] { display: none; }
+-.zmw-radio-tab-fav.zmw-on .zmw-radio-cnt { background: var(--grad-soft); color: var(--text); }
+-.zmw-radio-row { display: flex; align-items: center; min-width: 0; border-radius: 6px; }
+-.zmw-radio-row .zmw-radio-st { flex: 1 1 auto; }
+-.zmw-radio-list .zmw-radio-row .zmw-radio-st { padding-right: 4px; }
+-.zmw-radio-fav { width: 26px; height: 26px; flex: none; display: grid; place-items: center; padding: 0; margin: 0 4px 0 -2px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; opacity: .55; transition: opacity .15s, color .15s, background .15s, transform .12s; }
+-.zmw-radio-fav .zmw-i { width: 16px; height: 16px; stroke-width: 1.7; }
+-.zmw-radio-fav:hover { opacity: 1; color: #f5a524; background: var(--surface-2); }
+-.zmw-radio-fav:active { transform: scale(.86); }
+-.zmw-radio-fav:focus-visible { outline: none; opacity: 1; box-shadow: var(--ring); }
+-.zmw-radio-fav.zmw-on { opacity: 1; color: #f5a524; }
+-.zmw-radio-fav.zmw-on .zmw-i { fill: currentColor; }
+-@media (hover: hover) and (pointer: fine) {
+-	.zmw-radio-fav:not(.zmw-on) { opacity: 0; }
+-	.zmw-radio-row:hover .zmw-radio-fav:not(.zmw-on), .zmw-radio-fav:not(.zmw-on):focus-visible { opacity: .6; }
+-	.zmw-radio-row:hover .zmw-radio-fav:not(.zmw-on):hover { opacity: 1; }
+-}
+-.zmw-radio-list-empty { display: block; }
+-.zmw-radio-empty { display: flex; align-items: flex-start; gap: 12px; width: 380px; max-width: 100%; box-sizing: border-box; margin: 4px 0 6px; padding: 12px 14px; border-radius: 10px; border: 1px dashed var(--border-2); color: var(--muted); font-size: 12.5px; line-height: 1.45; }
+-.zmw-radio-empty b { display: block; margin-bottom: 2px; color: var(--text); font-size: 13.5px; font-weight: 650; }
+-.zmw-radio-empty-ico { width: 34px; height: 34px; flex: none; display: grid; place-items: center; border-radius: 10px; background: rgba(245,165,36,.14); color: #f5a524; }
+-.zmw-radio-empty-ico .zmw-i { width: 19px; height: 19px; fill: currentColor; stroke-width: 1.4; }
+-@media (max-width: 520px) { .zmw-radio-list { grid-auto-columns: minmax(0, 1fr); } .zmw-radio-menu { width: auto; } .zmw-radio-st span:last-child { white-space: normal; overflow: visible; overflow-wrap: anywhere; } .zmw-radio-tabs { flex-wrap: wrap; column-gap: 14px; row-gap: 8px; } .zmw-radio-empty { width: auto; } }
+-@media (prefers-reduced-motion: reduce) {
+-	html .zmw-radio-play .zmw-radio-eq i, html .zmw-radio-wait .zmw-radio-eq i, html .zmw-radio-st.zmw-radio-live .zmw-radio-eq i { animation-duration: 1s !important; animation-iteration-count: infinite !important; }
+-	html .zmw-radio-play .zmw-radio-eq i:nth-child(2), html .zmw-radio-st.zmw-radio-live .zmw-radio-eq i:nth-child(2) { animation-duration: .8s !important; }
+-	html .zmw-radio-play .zmw-radio-eq i:nth-child(3), html .zmw-radio-st.zmw-radio-live .zmw-radio-eq i:nth-child(3) { animation-duration: 1.15s !important; }
+-	html .zmw-radio-scroll .zmw-radio-mq { animation-duration: var(--zmw-mqt, 8s) !important; animation-iteration-count: infinite !important; }
+-}
+-html.zm-dust-on .zmw-side .zmw-mem-row, html.zm-dust-on .zmw-side .zmw-radio { background: transparent; }
++html.zm-dust-on .zmw-side .zmw-mem-row { background: transparent; }
+ #zmw-view .zm-meter .zmw-mem-head { font-size: 13px; margin-bottom: 6px; align-items: baseline; }
+ #zmw-view .zm-meter .zmw-mem-label { font-weight: 500; }
+ 
+@@ -73715,7 +72710,7 @@
+ html[data-zm-acc] #zmw-view a:not(.cbi-button) { color: var(--zm-acc); }
+ html[data-zm-acc] #zmw-view input[type="checkbox"], html[data-zm-acc] #zmw-view input[type="radio"], html[data-zm-acc] #zmw-view input[type="range"] { accent-color: var(--zm-acc); }
+ html[data-zm-font] { --font: var(--zm-font) !important; }
+-html[data-zm-font] body, html[data-zm-font] body *:not(:is(code, pre, kbd, samp, textarea, .zm-log, .zm-log *, .zm-config-editor, .zm-term-bar, .zm-log-min, .zm-tg-link-box, .zm-list-path, .zm-cat-src-url, .zm-ab-doms, .zm-tg-key, .zm-tg-edit-in, .zm-tg-args-pre, .zm-dom-item, .zm-tt-now-tag, .zm-ow-mac, .zm-ts-where span, .zm-ts-cmd, .zm-abj-mono, .zm-abj-dom, .zm-mon-mono, .zm-zp-mono, .zm-zp-chip, .zm-zp-tag, .bt-current-cmd, .zm-find-input, .zmw-mx-msg, .zm-find-ico, .zmw-radio-main)) { font-family: var(--zm-font) !important; }
++html[data-zm-font] body, html[data-zm-font] body *:not(:is(code, pre, kbd, samp, textarea, .zm-log, .zm-log *, .zm-config-editor, .zm-term-bar, .zm-log-min, .zm-tg-link-box, .zm-list-path, .zm-cat-src-url, .zm-ab-doms, .zm-tg-key, .zm-tg-edit-in, .zm-tg-args-pre, .zm-dom-item, .zm-tt-now-tag, .zm-ow-mac, .zm-ts-where span, .zm-ts-cmd, .zm-abj-mono, .zm-abj-dom, .zm-mon-mono, .zm-zp-mono, .zm-zp-chip, .zm-zp-tag, .bt-current-cmd, .zm-find-input, .zmw-mx-msg, .zm-find-ico)) { font-family: var(--zm-font) !important; }
+ html[data-zm-mono] { --mono: var(--zm-mono) !important; }
+ html[data-zm-mono] :is(code, pre, kbd, samp, textarea, .zm-log, .zm-log *, .zm-config-editor, .zm-term-bar, .zm-log-min, .zm-tg-link-box, .zm-list-path, .zm-cat-src-url, .zm-ab-doms, .zm-tg-key, .zm-tg-edit-in, .zm-tg-args-pre, .zm-dom-item, .zm-tt-now-tag, .zm-ow-mac, .zm-ts-where span, .zm-ts-cmd, .zm-abj-mono, .zm-abj-dom, .zm-mon-mono, .zm-zp-mono, .zm-zp-chip, .zm-zp-tag, .bt-current-cmd, .zm-find-input, .zmw-mx-msg) { font-family: var(--zm-mono) !important; }
+ html[data-zm-zoom] #zmw-view { zoom: var(--zm-zoom); }
+@@ -73746,7 +72741,6 @@
+ html[data-zm-motion="0"] .zm-toast-spin, html[data-zm-motion="0"] .zm-reboot-spin, html[data-zm-motion="0"] .zmw-btn-primary.zmw-loading::after, html[data-zm-motion="0"] .zm-find-spin { animation-duration: 1.2s !important; animation-iteration-count: infinite !important; }
+ html.zm-dust-on[data-zm-glass="0"] { --zm-glass: 100% !important; --zm-glass-side: 100% !important; --zm-glass-auto: 100% !important; --zm-glass-on: 100% !important; --zm-glass-in: 100% !important; --zm-glass-in3: 100% !important; }
+ html.zm-dust-on[data-zm-glass="0"] .zmw-top { --zmw-top-bg: var(--bg) !important; }
+-html[data-zm-radio="0"] .zmw-radio, html[data-zm-radio="0"] .zmw-radio-menu { display: none !important; }
+ #zmw-view .zm-lk-grid { display: grid; grid-template-columns: minmax(0, 1fr) 330px; grid-template-areas: "tabs ." "main side"; gap: 14px 18px; align-items: start; }
+ #zmw-view .zm-lk-grid > .zm-lk-tabs { grid-area: tabs; }
+ #zmw-view .zm-lk-grid > .zm-lk-main { grid-area: main; min-width: 0; }

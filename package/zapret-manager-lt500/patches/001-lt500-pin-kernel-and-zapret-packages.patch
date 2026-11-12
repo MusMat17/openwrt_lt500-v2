@@ -1,8 +1,8 @@
 --- a/ZapretManager_LuCI.sh
 +++ b/ZapretManager_LuCI.sh
-@@ -1181,11 +1181,18 @@
- 
- _zm_ca_have() { ls /etc/ssl/certs/*.crt >/dev/null 2>&1; }
+@@ -4054,8 +4054,15 @@
+ 	else opkg files "$1" 2>/dev/null | grep '^/'; fi
+ }
  
 +_lt500_pinned_pkg() {
 +	[ -f /etc/lt500-allinone ] || return 1
@@ -10,8 +10,13 @@
 +	return 1
 +}
 +
- _zm_pkg_del() {
- 	local rc p have="" names ca=0
+ _zm_pkg_purge() {
+ 	local p="$1" files f try=1 left reg ca=0
++	_lt500_pinned_pkg "$p" && { echo "LT500v2: сохраняем встроенный пакет $p" >&2; return 0; }
+ 	_pkg_is_installed "$p" || return 0
+ 	_zm_ca_have && ca=1
+ 	files="$(_zm_pkg_files "$p")"
+@@ -9021,6 +9028,7 @@
  	_zm_ca_have && ca=1
  	for p; do
  		case "$p" in -*) have="$have $p"; continue ;; esac
@@ -19,8 +24,8 @@
  		_pkg_is_installed "$p" && have="$have $p"
  	done
  	names="$(_zm_pkg_names $have)"
-@@ -2415,6 +2422,9 @@
- }
+@@ -18568,6 +18576,9 @@
+ 
  zapret_action() {
  	local action="$1"
 +	if [ -f /etc/lt500-allinone ]; then
@@ -29,15 +34,7 @@
  	case "$action" in
  		install)
  			if [ ! -f /etc/init.d/zapret ] && [ -f /etc/init.d/zapret2 ] && [ ! -f "$EXPERT_MODE_FILE" ]; then
-@@ -7659,6 +7669,7 @@
- 
- _zm_pkg_purge() {
- 	local p="$1" files f try=1 left reg ca=0
-+	_lt500_pinned_pkg "$p" && { echo "LT500v2: сохраняем встроенный пакет $p" >&2; return 0; }
- 	_pkg_is_installed "$p" || return 0
- 	_zm_ca_have && ca=1
- 	files="$(_zm_pkg_files "$p")"
-@@ -17020,6 +17031,14 @@
+@@ -27139,6 +27150,14 @@
  
  _st_install_awg() {
  	local mode="$1"
@@ -52,7 +49,7 @@
  	if [ "$mode" != update ] && _st_awg_loaded && command -v awg >/dev/null 2>&1 && _awg_proto_ok; then return 0; fi
  	local rel arch tgt sub post luci old_luci base bases m p f ok=0 was_loaded=0 kver0 kver1 need="" force="" why="" mrc
  	_st_awg_loaded && was_loaded=1
-@@ -23235,6 +23254,9 @@
+@@ -33894,6 +33913,9 @@
  
  awg_action() {
  	local action="$1" mode="$2" i name route fw conf ep
