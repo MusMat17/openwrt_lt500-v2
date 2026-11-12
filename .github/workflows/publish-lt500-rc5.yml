@@ -1,0 +1,73 @@
+name: Verify and publish saved LT500 RC5 without recompiling
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - v2.0-zapret-rc5
+    paths:
+      - '.github/workflows/publish-lt500-rc5.yml'
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: lt500-rc5-release
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      LT500_BUILD_COMMIT: 96b86462e8759887c894addf8affe9243d1240cc
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check original build and artifact provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(gh api repos/MusMat17/openwrt_lt500-v2/actions/runs/43292845636 --jq .head_sha)" = "$LT500_BUILD_COMMIT"
+          test "$(gh api repos/MusMat17/openwrt_lt500-v2/actions/artifacts/13982086119 --jq .digest)" = sha256:5e39fac5425b7a30268abd0be7733382630b60f8207b4c76c38c851bac1e316c
+      - name: Download preserved original build outputs
+        uses: actions/download-artifact@v4
+        with:
+          name: lt500-rc5-build-candidate
+          run-id: 43292845636
+          github-token: ${{ github.token }}
+          path: .
+      - name: Verify unchanged image and recover actual rootfs
+        run: |
+          echo '72ab40f2d945710991424d8a4b709fd4e0ee891a6347933dfae4c8d853ae2b63  bin/targets/ramips/mt76x8/openwrt-ramips-mt76x8-cudy_lt500-v2-squashfs-sysupgrade.bin' | sha256sum -c -
+          mkdir -p build_dir/lt500-rc5/root-ramips
+          tar -xzf bin/targets/ramips/mt76x8/lt500-rc5-rootfs.tar.gz -C build_dir/lt500-rc5/root-ramips
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static
+      - name: Repeat kernel ABI, panel and rollback checks on the built rootfs
+        run: |
+          ROOT=build_dir/lt500-rc5/root-ramips
+          python3 scripts/lt500/check-module-abi.py "$ROOT"
+          python3 scripts/lt500/check-panel-installer.py "$ROOT/usr/libexec/zapret-manager-installer"
+          python3 scripts/lt500/check-panel-payloads.py "$ROOT/usr/libexec/zapret-manager-installer"
+          LT500_TEST_BUSYBOX="$PWD/$ROOT/bin/busybox" LT500_TEST_QEMU="$(command -v qemu-mipsel-static)" LT500_TEST_SYSROOT="$PWD/$ROOT" python3 scripts/lt500/test-panel-updates.py
+          qemu-mipsel-static -cpu 24Kc -L "$ROOT" "$ROOT/usr/sbin/steerd" --version
+      - name: Prepare assets from the original image and verify independent IPKs
+        run: |
+          python3 scripts/lt500/stage-steer.py
+          python3 scripts/lt500/release-assets.py
+          python3 scripts/lt500/check-independent-packages.py build_dir/lt500-rc5/root-ramips bin/targets/ramips/mt76x8/release
+          python3 scripts/lt500/package-bundle.py bin/targets/ramips/mt76x8/release
+          cd bin/targets/ramips/mt76x8/release
+          sha256sum -c SHA256SUMS
+          sha256sum -c LT500v2-OpenWrt-23.05.5-RC5-zapret-bundle.zip.sha256
+      - name: Upload checked RC5 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cudy-lt500v2-openwrt-23.05.5-v2.0-zapret-rc5
+          retention-days: 30
+          if-no-files-found: error
+          path: bin/targets/ramips/mt76x8/release/*
+      - name: Publish RC5 and compatible panel channel after byte verification
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/lt500/publish-release.py

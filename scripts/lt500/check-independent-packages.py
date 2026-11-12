@@ -15,6 +15,9 @@ assert qemu
 with tempfile.TemporaryDirectory(prefix='lt500-opkg-check-') as directory:
     fixture = pathlib.Path(directory)
     shutil.copytree(root / 'usr/lib/opkg', fixture / 'usr/lib/opkg', symlinks=True)
+    # opkg compares recorded conffile hashes even during --noaction reinstall.
+    # The fixture must contain the image's actual configuration as well as its DB.
+    shutil.copytree(root / 'etc', fixture / 'etc', symlinks=True)
     for path in ('var/lock', 'var/opkg-lists', 'tmp'):
         (fixture / path).mkdir(parents=True, exist_ok=True)
     config = fixture / 'opkg.conf'
