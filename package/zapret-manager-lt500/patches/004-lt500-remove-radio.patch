@@ -1004,7 +1004,7 @@
  var bgPv = { list: [], raf: 0, last: 0 };
  function bgPvAdd(cv, id) {
  	if (!ZMFX.ENG[id]) return;
-@@ -69193,32 +68427,15 @@
+@@ -69193,37 +68427,19 @@
  	paint();
  	return { el: grid, paint: paint };
  }
@@ -1040,7 +1040,12 @@
  	document.body.appendChild(pill);
  	document.body.appendChild(hint);
  	document.documentElement.classList.add('zm-bg-only');
-@@ -69257,15 +68474,7 @@
+ 	dustPlace();
+-	bgoPaint();
+ 	bgoWake();
+ 	bgo.h = setTimeout(function () { if (bgo) bgo.hint.classList.add('zmw-bgo-off'); }, 3200);
+ 	setTimeout(function () {
+@@ -69257,15 +68473,7 @@
  	document.documentElement.classList.remove('zm-bg-only');
  	document.documentElement.classList.remove('zm-bgo-idle');
  }
@@ -1057,7 +1062,7 @@
  function bgCss(name, fb) {
  	var v = '', x = document.createElement('canvas').getContext('2d'), m;
  	try { v = getComputedStyle(document.documentElement).getPropertyValue(name).trim(); } catch (e) {}
-@@ -69443,113 +68652,7 @@
+@@ -69443,113 +68651,7 @@
  		};
  	}
  
@@ -1172,7 +1177,7 @@
  
  	function mtx() {
  		var fs = 16, drops = [], acc = 0, chars = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワン0123456789ZAPRETMANAGER';
-@@ -69731,7 +68834,7 @@
+@@ -69731,7 +68833,7 @@
  		};
  	}
  	var tfx = '';
@@ -1181,7 +1186,7 @@
  	function size() {
  		var d = LOOK.dpr === 2 ? Math.min(window.devicePixelRatio || 1, 2) : 1;
  		w = window.innerWidth; h = window.innerHeight;
-@@ -69748,7 +68851,7 @@
+@@ -69748,7 +68850,7 @@
  		var dt = last ? Math.min(0.08, (now - last) / 1000) : 0.033;
  		last = now;
  		if (!eng.keep) ctx.clearRect(0, 0, w, h);
@@ -1190,7 +1195,7 @@
  		if (eng.au) eng.draw(dt, au);
  		else eng.draw(au ? dt * (1 + 1.2 * au.lvl + 1.8 * au.kick) : dt);
  	}
-@@ -69872,12 +68975,10 @@
+@@ -69872,12 +68974,10 @@
  	dustSync();
  	animMenuPaint();
  	if (!animKind()) bgoExit();
@@ -1203,7 +1208,7 @@
  	animMenuEls.hide.disabled = !animKind();
  }
  var themeMenuEl = null;
-@@ -69956,7 +69057,6 @@
+@@ -69956,7 +69056,6 @@
  	dustSync();
  	animMenuPaint();
  	if (!animKind()) bgoExit();
@@ -1211,7 +1216,7 @@
  	if (fresh) toast('«Своя тема» создана из того, что сейчас на экране. Меняйте её в разделе «Оформление» — всё сохранится само.', 'info');
  	if (lookPageRender) lookPageRender();
  }
-@@ -69967,11 +69067,11 @@
+@@ -69967,11 +69066,11 @@
  	var cur = themeEffective();
  	var items = [ E('div', { 'class': 'zmw-theme-group' }, [ 'Тема оформления' ]) ];
  	THEMES.forEach(function (t) { items.push(themeOpt(t, cur)); });
@@ -1226,7 +1231,7 @@
  	animMenuPaint();
  	function themeOpt(t, cur) {
  		return E('button', {
-@@ -70195,9 +69295,9 @@
+@@ -70195,9 +69294,9 @@
  			var ak = animKind();
  			var lvl = !ak ? 0 : (L.fps / 30) * (L.dpr === 2 ? 2.5 : 1) * (ANIM_HEAVY.test(ak) ? 1.6 : 1), bar = Math.min(100, Math.round(lvl * 28)) || 2;
  			var batN = !navigator.getBattery;
@@ -1238,7 +1243,7 @@
  					E('button', { 'type': 'button', 'class': 'cbi-button', 'disabled': ak ? null : '', 'click': function () { bgoEnter(); } }, [ 'Скрыть панель — оставить только фон' ]) ])
  			]));
  			kids.push(lookCard('Плавность', 'Эти настройки ваши личные: они не входят в тему и не сбрасываются при её смене.', [
-@@ -70215,7 +69315,6 @@
+@@ -70215,7 +69314,6 @@
  				lookRow('Контраст текста', lookSeg([ [ 'n', 'Обычный' ], [ 'h', 'Повышенный' ] ], L.ctr, function (v) { lookSet('ctr', v); paint(); })),
  				E('p', { 'class': 'zm-hint' }, [ 'Масштаб меняет страницы целиком — текст, кнопки и отступы, как масштаб в браузере, но меню и заголовок остаются прежними. Повышенный контраст делает серые подписи и подсказки темнее на светлых темах и светлее на тёмных.' ]),
  				lookSw(!!L.motion, 'Анимации интерфейса', 'Плавное появление, мигающие точки статуса, переходы. Выключите — панель станет полностью статичной. Индикаторы загрузки крутятся всегда.', function () { lookSet('motion', L.motion ? 0 : 1); paint(); }),
@@ -1246,7 +1251,7 @@
  			]));
  		}
  		var pasteBox = null;
-@@ -70230,7 +69329,6 @@
+@@ -70230,7 +69328,6 @@
  					LOOK.my.a = themeFxOf(themeById(LOOK.my.b));
  					b = themeById(LOOK.my.b);
  				}
@@ -1254,7 +1259,7 @@
  				setTheme(pref);
  				toast(b ? 'Своя тема сброшена — теперь она как «' + b.name + '»' : 'Оформление сброшено — тема такая, как задумана', 'info');
  			} }, [ lookResetAsk ? 'Нажмите ещё раз, чтобы сбросить' : 'Сбросить оформление' ]),
-@@ -70249,7 +69347,6 @@
+@@ -70249,7 +69346,6 @@
  			try { o = JSON.parse(ta.value); } catch (e) { toast('Это не похоже на настройки оформления', 'error'); return; }
  			if (!o || typeof o !== 'object' || !o.look) { toast('Это не похоже на настройки оформления', 'error'); return; }
  			LOOK = lookClean(o.look); lookSave();
@@ -1262,7 +1267,7 @@
  			th = o.theme === 'minimal' ? 'micro' : o.theme === 'blocks' ? 'contrast' : o.theme;
  			if (o.anim === '0' || o.anim === 'theme' || o.anim === '1' || ANIM_RE.test(o.anim || '')) { sset(K_ANIM, o.anim, true); animMark(); bgKeep(); }
  			if (th && (th === 'auto' || themeById(th))) setTheme(th, true);
-@@ -70636,7 +69733,6 @@
+@@ -70636,7 +69732,6 @@
  	});
  	nav.appendChild(E('div', { 'class': 'zmw-nav-editfoot' }, [
  		E('button', { 'class': 'zmw-nav-btn zmw-nav-btn-wide', 'type': 'button', 'click': function () { navUninstalled(); } }, [ 'Скрыть неустановленные' ]),
@@ -1270,7 +1275,7 @@
  		E('button', { 'class': 'zmw-nav-btn', 'type': 'button', 'click': function () { navAll(); } }, [ 'Показать все' ]),
  		E('button', { 'class': 'zmw-nav-btn zmw-nav-btn-done', 'type': 'button', 'click': function () { navDone(); } }, [ 'Готово' ])
  	]));
-@@ -70660,7 +69756,6 @@
+@@ -70660,7 +69755,6 @@
  		updateEl,
  		nav,
  		E('div', { 'class': 'zmw-side-foot' }, [
@@ -1278,7 +1283,7 @@
  			deviceEl,
  			memEl
  		])
-@@ -71161,9 +70256,6 @@
+@@ -71161,9 +70255,6 @@
  }
  
  function freshLogin(note, kind) {
@@ -1288,7 +1293,7 @@
  	dropCaches();
  	var shown = false;
  	var show = function () { if (!shown) { shown = true; showLogin(note, kind); } };
-@@ -71209,7 +70301,6 @@
+@@ -71209,7 +70300,6 @@
  	loadShellInfo();
  	refreshShellStatus();
  	refreshMemory();
@@ -1296,7 +1301,7 @@
  	route();
  }
  
-@@ -71526,7 +70617,6 @@
+@@ -71526,7 +70616,6 @@
  .zmw-nav-editing .zmw-nav-editfoot { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; padding: 10px 4px 4px; }
  .zmw-nav-editfoot .zmw-nav-btn { min-width: 0; padding: 8px 10px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
  .zmw-nav-editfoot .zmw-nav-btn-wide { grid-column: 1 / -1; }
@@ -1304,7 +1309,7 @@
  .zmw-nav-editfoot .zmw-nav-btn-done { color: #fff; background: var(--grad); border-color: transparent; }
  .zmw-nav-editfoot .zmw-nav-btn-done:hover { color: #fff; border-color: transparent; filter: brightness(1.08); }
  .zmw-nav-btn { border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2); border-radius: 9px; padding: 6px 10px; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
-@@ -71610,104 +70700,9 @@
+@@ -71610,104 +70699,9 @@
  .zmw-side .zmw-mem-val { font-size: 12px; line-height: 1.3; color: var(--text); overflow: hidden; text-overflow: ellipsis; }
  .zmw-side .zmw-mem-val.zmw-mem-fit { font-size: 10.5px; letter-spacing: -.02em; }
  .zmw-side .zmw-mem-bar { height: 4px; }
@@ -1410,7 +1415,7 @@
  #zmw-view .zm-meter .zmw-mem-head { font-size: 13px; margin-bottom: 6px; align-items: baseline; }
  #zmw-view .zm-meter .zmw-mem-label { font-weight: 500; }
  
-@@ -73715,7 +72710,7 @@
+@@ -73715,7 +72709,7 @@
  html[data-zm-acc] #zmw-view a:not(.cbi-button) { color: var(--zm-acc); }
  html[data-zm-acc] #zmw-view input[type="checkbox"], html[data-zm-acc] #zmw-view input[type="radio"], html[data-zm-acc] #zmw-view input[type="range"] { accent-color: var(--zm-acc); }
  html[data-zm-font] { --font: var(--zm-font) !important; }
@@ -1419,7 +1424,7 @@
  html[data-zm-mono] { --mono: var(--zm-mono) !important; }
  html[data-zm-mono] :is(code, pre, kbd, samp, textarea, .zm-log, .zm-log *, .zm-config-editor, .zm-term-bar, .zm-log-min, .zm-tg-link-box, .zm-list-path, .zm-cat-src-url, .zm-ab-doms, .zm-tg-key, .zm-tg-edit-in, .zm-tg-args-pre, .zm-dom-item, .zm-tt-now-tag, .zm-ow-mac, .zm-ts-where span, .zm-ts-cmd, .zm-abj-mono, .zm-abj-dom, .zm-mon-mono, .zm-zp-mono, .zm-zp-chip, .zm-zp-tag, .bt-current-cmd, .zm-find-input, .zmw-mx-msg) { font-family: var(--zm-mono) !important; }
  html[data-zm-zoom] #zmw-view { zoom: var(--zm-zoom); }
-@@ -73746,7 +72741,6 @@
+@@ -73746,7 +72740,6 @@
  html[data-zm-motion="0"] .zm-toast-spin, html[data-zm-motion="0"] .zm-reboot-spin, html[data-zm-motion="0"] .zmw-btn-primary.zmw-loading::after, html[data-zm-motion="0"] .zm-find-spin { animation-duration: 1.2s !important; animation-iteration-count: infinite !important; }
  html.zm-dust-on[data-zm-glass="0"] { --zm-glass: 100% !important; --zm-glass-side: 100% !important; --zm-glass-auto: 100% !important; --zm-glass-on: 100% !important; --zm-glass-in: 100% !important; --zm-glass-in3: 100% !important; }
  html.zm-dust-on[data-zm-glass="0"] .zmw-top { --zmw-top-bg: var(--bg) !important; }
