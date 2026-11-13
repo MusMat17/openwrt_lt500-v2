@@ -123,7 +123,9 @@ assert image.read_bytes()[:offset] == data[:offset]
 # Read the written SquashFS back, so publication validates the actual image.
 check = work / 'roundtrip'
 run('unsquashfs', '-no-progress', '-o', offset, '-d', check, image, stdout=subprocess.DEVNULL)
-assert fingerprint(check) == after
+roundtrip = fingerprint(check)
+diff = [(p, after.get(p), roundtrip.get(p)) for p in after.keys() | roundtrip.keys() if after.get(p) != roundtrip.get(p)]
+assert not diff, diff[:25]
 manifest = original / 'openwrt-ramips-mt76x8-cudy_lt500-v2.manifest'
 (base / manifest.name).write_text(manifest.read_text().replace('steer-core - 2.1.3-1\n', 'steer-core - 2.1.4-1\n'))
 profiles = json.loads((original / 'profiles.json').read_text())
