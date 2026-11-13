@@ -58,6 +58,8 @@ before = fingerprint(root)
 info = root / 'usr/lib/opkg/info'
 allowed = {p.lstrip('/') for p in (info / 'steer-core.list').read_text().splitlines()}
 status_before = (root / 'usr/lib/opkg/status').read_text()
+keep_path = root / 'lib/upgrade/keep.d/steer-core'
+keep_data = keep_path.read_bytes()
 run('python3', 'scripts/lt500/stage-steer.py')
 staged = repo / 'package/steer-core/files'
 allowed.update(str(p.relative_to(staged)) for p in staged.rglob('*') if not p.is_dir())
@@ -83,10 +85,14 @@ helper = root / 'usr/libexec/lt500-steer-migrate'
 helper.parent.mkdir(parents=True, exist_ok=True)
 shutil.copyfile(staged / 'usr/libexec/lt500-steer-migrate', helper)
 helper.chmod(0o755)
+keep_path.write_bytes(keep_data)
+keep_path.chmod(0o644)
 listing = info / 'steer-core.list'
 names = listing.read_text().splitlines()
-if '/usr/libexec/lt500-steer-migrate' not in names:
-    listing.write_text('\n'.join(names + ['/usr/libexec/lt500-steer-migrate']) + '\n')
+for retained in ('/usr/libexec/lt500-steer-migrate', '/lib/upgrade/keep.d/steer-core'):
+    if retained not in names:
+        names.append(retained)
+listing.write_text('\n'.join(names) + '\n')
 (root / 'etc/lt500-allinone').write_text('LT500v2 v2.0-zapret-rc6 all-in-one\n')
 after = fingerprint(root)
 def metadata(p):
@@ -108,7 +114,7 @@ assert current['steer-core'] == '2.1.4-1'
 run('python3', 'scripts/lt500/check-module-abi.py', root)
 run('qemu-mipsel-static', '-cpu', '24Kc', '-L', root, root / 'usr/sbin/steerd', '--version')
 fs = work / 'rootfs.squashfs'
-run('mksquashfs', root, fs, '-nopad', '-noappend', '-no-xattrs', '-comp', 'xz',
+run('mksquashfs', root, fs, '-nopad', '-noappend', '-no-sparse', '-no-xattrs', '-comp', 'xz',
     '-b', '256K', '-processors', '2', '-mkfs-time', timestamp, '-all-time', timestamp, '-no-progress', stdout=subprocess.DEVNULL)
 image = base / 'openwrt-ramips-mt76x8-cudy_lt500-v2-squashfs-sysupgrade.bin'
 image.write_bytes(data[:offset] + fs.read_bytes())
