@@ -64,11 +64,19 @@ allowed.update(str(p.relative_to(staged)) for p in staged.rglob('*') if not p.is
 package = repo / 'dl/steer-core-2.1.4-1_mipsel_24kc.ipk'
 config = work / 'opkg.conf'
 config.write_text('dest root /\narch all 1\narch noarch 1\narch mipsel_24kc 10\n')
+for path in ('var/lock', 'var/opkg-lists', 'tmp'):
+    (root / path).mkdir(parents=True, exist_ok=True)
 # Empty feed lists prevent fetching foreign kernel modules. The matching TUN,
 # nftables and AWG dependencies are already installed in the actual RC5 root.
 run('qemu-mipsel-static', '-cpu', '24Kc', '-L', root, root / 'bin/opkg.real',
     '--offline-root', root, '--conf', config, 'install', package,
     env=dict(os.environ, IPKG_NO_SCRIPT='1', IPKG_INSTROOT=str(root)))
+assert not any(p.startswith('tmp/') for p in before), 'Pristine RC5 tmp must be empty'
+for p in (root / 'tmp').iterdir():
+    if p.is_dir() and not p.is_symlink():
+        shutil.rmtree(p)
+    else:
+        p.unlink()
 # Retain precisely the RC5 integration hook; other Steer payload bytes are official.
 shutil.copyfile(staged / 'etc/init.d/steer', root / 'etc/init.d/steer')
 helper = root / 'usr/libexec/lt500-steer-migrate'
@@ -100,7 +108,7 @@ assert current['steer-core'] == '2.1.4-1'
 run('python3', 'scripts/lt500/check-module-abi.py', root)
 run('qemu-mipsel-static', '-cpu', '24Kc', '-L', root, root / 'usr/sbin/steerd', '--version')
 fs = work / 'rootfs.squashfs'
-run('mksquashfs', root, fs, '-nopad', '-noappend', '-root-owned', '-no-xattrs', '-comp', 'xz',
+run('mksquashfs', root, fs, '-nopad', '-noappend', '-no-xattrs', '-comp', 'xz',
     '-b', '256K', '-processors', '2', '-mkfs-time', timestamp, '-all-time', timestamp, '-no-progress', stdout=subprocess.DEVNULL)
 image = base / 'openwrt-ramips-mt76x8-cudy_lt500-v2-squashfs-sysupgrade.bin'
 image.write_bytes(data[:offset] + fs.read_bytes())
