@@ -8,12 +8,12 @@ import tarfile
 import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-NAME = 'steer-core-2.1.3-1_mipsel_24kc.ipk'
-SHA256 = '81a290efe633fc09a96bbb0d3808473c581290d61a28faac0ac22ad3c7297a3e'
+NAME = 'steer-core-2.1.4-1_mipsel_24kc.ipk'
+SHA256 = '2bfcfcec5e20b622e82f875755c9b57169a709b7bac2e9ade10f7a5cf45e9f21'
 package = ROOT / 'dl' / NAME
 package.parent.mkdir(exist_ok=True)
 if not package.exists():
-    urllib.request.urlretrieve('https://github.com/splify2/steer/releases/download/v2.1.3/' + NAME, package)
+    urllib.request.urlretrieve('https://github.com/splify2/steer/releases/download/v2.1.4/' + NAME, package)
 assert hashlib.sha256(package.read_bytes()).hexdigest() == SHA256, 'Official Steer package hash mismatch'
 target = ROOT / 'package/steer-core/files'
 shutil.rmtree(target, ignore_errors=True)
@@ -36,4 +36,4 @@ shutil.copyfile(ROOT / 'package/steer-core/lt500-steer-migrate', helper)
 helper.chmod(0o755)
 assert (target / 'usr/share/steer/seed/index.json.sig').is_file()
 assert (target / 'usr/share/nftables.d/chain-pre/input/30-steer.nft').is_file()
-print(f'Official Steer 2.1.3: {SHA256}; signed seed and trust keys retained')
+print(f'Official Steer 2.1.4: {SHA256}; signed seed and trust keys retained')

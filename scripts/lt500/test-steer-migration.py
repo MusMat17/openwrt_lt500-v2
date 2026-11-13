@@ -15,20 +15,9 @@ import urllib.request
 
 repo = pathlib.Path(__file__).resolve().parents[2]
 assert os.geteuid() == 0, 'Run this chroot test with sudo in CI'
-image = repo / 'dl/lt500-rc4-migration-fixture.bin'
-if not image.exists():
-    urllib.request.urlretrieve('https://github.com/MusMat17/openwrt_lt500-v2/releases/download/v2.0-zapret-rc4/Cudy-LT500v2-OpenWrt-23.05.5-v2.0-zapret-rc4-sysupgrade.bin', image)
-data = image.read_bytes()
-assert hashlib.sha256(data).hexdigest() == '775f6ace1830a4bcd43150ae71271f4c1922ed9813e0ac41f0bfdcdec763cb39'
 with tempfile.TemporaryDirectory(prefix='lt500-steer-migration-') as d:
     root = pathlib.Path(d) / 'root'
-    subprocess.run(['unsquashfs', '-no-progress', '-o', '2303451', '-d', str(root), str(image)], check=True, stdout=subprocess.DEVNULL)
-    for listing in (root / 'usr/lib/opkg/info').glob('steer-*.list'):
-        for line in listing.read_text().splitlines():
-            p = root / line.lstrip('/')
-            if p.is_file() or p.is_symlink():
-                p.unlink()
-    shutil.copytree(repo / 'package/steer-core/files', root, dirs_exist_ok=True, symlinks=True)
+    shutil.copytree(repo / 'tmp/rc6/roundtrip', root, symlinks=True, ignore=shutil.ignore_patterns('console'))
     shutil.copyfile(shutil.which('qemu-mipsel-static'), root / 'usr/bin/qemu-mipsel-static')
     (root / 'usr/bin/qemu-mipsel-static').chmod(0o755)
     # Plugin prerequisites use existence checks. These are fixture placeholders,
@@ -53,7 +42,7 @@ with tempfile.TemporaryDirectory(prefix='lt500-steer-migration-') as d:
     state = json.loads((root / 'tmp/pm/etc/state.json').read_text())['plugins']
     for plugin in protocols + ['net1', 'awg']:
         item = state[plugin]
-        assert item['version'] == ('1.4.3' if plugin == 'net1' else '2.1.3'), item
+        assert item['version'] == ('1.5.0' if plugin == 'net1' else '2.1.4'), item
         assert item['state'] == 'enabled' and item['from'] == 'seed', item
         assert (root / f'tmp/pm/plugins/{plugin}/plugin.json').is_file()
     subprocess.run(command + ['plugin', 'status', '--json'], env=env, check=True)

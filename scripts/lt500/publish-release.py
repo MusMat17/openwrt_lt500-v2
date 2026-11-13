@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Publish the checked RC5 files, verify remote bytes, preserving earlier releases."""
+"""Publish the checked RC6 files, verify remote bytes, preserving earlier releases."""
 import hashlib
 import json
 import os
@@ -8,7 +8,7 @@ import subprocess
 import tempfile
 
 REPO = 'MusMat17/openwrt_lt500-v2'
-TAG = 'v2.0-zapret-rc5'
+TAG = 'v2.0-zapret-rc6'
 CHANNEL = 'lt500-panel-steer213-noradio'
 ROOT = pathlib.Path('bin/targets/ramips/mt76x8/release').resolve()
 
@@ -33,8 +33,8 @@ try:
     current = release(TAG)
 except ReleaseMissing:
     gh('release', 'create', TAG, '--target', build_sha,
-       '--title', 'Cudy LT500v2 — OpenWrt 23.05.5 — v2.0-zapret-rc5',
-       '--notes-file', ROOT / 'INSTALL-RC5.md', '--draft', '--prerelease', *files)
+       '--title', 'Cudy LT500v2 — OpenWrt 23.05.5 — v2.0-zapret-rc6',
+       '--notes-file', ROOT / 'INSTALL-RC6.md', '--draft', '--prerelease', *files)
     current = release(TAG)
 assert current['tag_name'] == TAG
 # Verify every published asset, including the independent packages and ZIP.
@@ -53,7 +53,7 @@ def verify_remote():
         assert hashlib.sha256(downloaded).hexdigest() == checksum, p.name
         if asset.get('digest'):
             assert asset['digest'] == 'sha256:' + checksum, p.name
-    print(f'All {len(files)} remote RC5 assets match the checked build byte-for-byte', flush=True)
+    print(f'All {len(files)} remote RC6 assets match the checked build byte-for-byte', flush=True)
 
 verify_remote()
 if current['draft']:
@@ -61,18 +61,10 @@ if current['draft']:
        '-F', 'draft=false', '-F', 'prerelease=true', '-f', 'make_latest=false')
 assert not release(TAG)['draft']
 verify_remote()
-# Do not change earlier panel channels: their installed updaters rely on them.
-try:
-    release(CHANNEL)
-except ReleaseMissing:
-    gh('release', 'create', CHANNEL, '--target', TAG,
-       '--title', 'Compatible LT500 panel 5.x updates (no radio)', '--prerelease', '--latest=false',
-       '--notes', 'Reviewed panel-only packages for LT500 RC5 with Steer 2.1.3. Kernel modules update with firmware.')
-gh('release', 'upload', CHANNEL, '--clobber', ROOT / 'lt500-panel.json',
-   ROOT / 'zapret-manager-lt500_5.064-1_mipsel_24kc.ipk')
-with tempfile.TemporaryDirectory(prefix='lt500-rc5-channel-') as d:
+# RC6 retains the exact RC5 panel package and compatible update channel.
+with tempfile.TemporaryDirectory(prefix='lt500-rc6-channel-') as d:
     gh('release', 'download', CHANNEL, '--dir', d)
     for name in ('lt500-panel.json', 'zapret-manager-lt500_5.064-1_mipsel_24kc.ipk'):
         assert (pathlib.Path(d) / name).read_bytes() == (ROOT / name).read_bytes(), name
-print('RC5 published and compatible panel channel verified', flush=True)
+print('RC6 published and compatible panel channel verified', flush=True)
 print(f'https://github.com/{REPO}/releases/tag/{TAG}', flush=True)

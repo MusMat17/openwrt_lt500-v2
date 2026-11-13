@@ -1,0 +1,47 @@
+name: LT500 RC6 - update only Steer on verified RC5
+on:
+  workflow_dispatch:
+  push:
+    branches: [v2.0-zapret-rc6]
+    paths:
+      - '.github/workflows/build-lt500-rc6.yml'
+      - 'scripts/lt500/**'
+      - 'package/steer-core/**'
+      - 'docs/LT500v2-RC6-INSTALL-RU.md'
+permissions:
+  contents: write
+concurrency:
+  group: lt500-rc6
+  cancel-in-progress: true
+jobs:
+  bundle:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install host tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y squashfs-tools qemu-user-static gcc
+          mkdir -p tmp/rc6
+          git clone https://github.com/openwrt/fwtool.git tmp/rc6/fwtool-source
+          git -C tmp/rc6/fwtool-source checkout 8f7fe925ca205c8e8e2d0d1b16218c1e148d5173
+          gcc -O2 -o tmp/rc6/fwtool tmp/rc6/fwtool-source/fwtool.c
+          gcc -O2 -o tmp/rc6/padjffs2 tools/padjffs2/src/padjffs2.c
+      - name: Build RC6 with byte-identical RC5 kernel and other packages
+        run: |
+          sudo -E python3 scripts/lt500/repack-rc6.py
+          sudo chown -R "$(id -u):$(id -g)" bin
+      - name: Verify Steer 2.1.4 signed plugins on the unchanged RC5 userspace
+        run: sudo -E python3 scripts/lt500/test-steer-migration.py
+      - name: Preserve checked RC6 bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: cudy-lt500v2-openwrt-23.05.5-v2.0-zapret-rc6
+          if-no-files-found: error
+          retention-days: 30
+          path: bin/targets/ramips/mt76x8/release/*
+      - name: Publish verified RC6 and retain RC5
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/lt500/publish-release.py
