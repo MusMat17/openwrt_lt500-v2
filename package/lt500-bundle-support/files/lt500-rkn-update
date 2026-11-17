@@ -24,6 +24,6 @@ chmod 644 "$DST.new"
 mv -f "$DST.new" "$DST"
 # Only signal Zapret nfqws, not another application with the same executable name.
 for pid in $(pidof nfqws 2>/dev/null || true); do
- [ "$(readlink -f "/proc/$pid/exe")" = /opt/zapret/nfq/nfqws ] && kill -HUP "$pid" || true
+ [ "$(readlink -f "/proc/$pid/exe")" = "$(readlink -f /opt/zapret/nfq/nfqws)" ] && kill -HUP "$pid" || true
 done
 logger -t lt500-rkn "Tachyon hostlist updated ($COUNT domains)"

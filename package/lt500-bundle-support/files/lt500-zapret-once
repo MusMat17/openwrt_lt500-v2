@@ -7,7 +7,7 @@ start() {
  /etc/init.d/zapret enabled || return 0
  # S21zapret may already have started it after uci-defaults completed.
  for pid in $(pidof nfqws 2>/dev/null); do
-  [ "$(readlink -f "/proc/$pid/exe")" = /opt/zapret/nfq/nfqws ] && return 0
+  [ "$(readlink -f "/proc/$pid/exe")" = "$(readlink -f /opt/zapret/nfq/nfqws)" ] && return 0
  done
  if /etc/init.d/zapret start >>/tmp/lt500-zapret-boot.log 2>&1; then
   logger -t lt500-zapret 'First-boot Zapret start requested'

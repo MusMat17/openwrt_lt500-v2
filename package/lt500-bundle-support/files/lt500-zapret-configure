@@ -14,6 +14,10 @@ NEW="$(printf '%s\n' "$OLD" | awk '
  print
 }')"
 if [ "$NEW" != "$OLD" ]; then
+ # Keep standalone opening/closing UCI quotes expected by the panel parser.
+ NEW="
+$NEW
+"
  uci set "zapret.config.NFQWS_OPT=$NEW"
 fi
 uci set zapret.config.run_on_boot=1

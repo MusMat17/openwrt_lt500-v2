@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Exercise RC7 migration using image UCI and the actual upstream config generator."""
-import os,pathlib,shlex,shutil,subprocess,sys,tempfile
+import os,pathlib,re,shlex,shutil,subprocess,sys,tempfile
 root=pathlib.Path(sys.argv[1]).resolve()
 repo=pathlib.Path(__file__).resolve().parents[2]
 src=repo/'package/lt500-bundle-support/files'
@@ -35,6 +35,7 @@ with tempfile.TemporaryDirectory() as td:
  assert '--hostlist=/opt/zapret/ipset/zapret-hosts-rkn.txt' in opts
  assert '--hostlist=/opt/zapret/ipset/zapret-hosts-google.txt' in opts
  assert 'host=rzd.ru' in opts and '<HOSTLIST' not in opts
+ assert re.search(r"option NFQWS_OPT '\n",(cfg/'zapret').read_text()), 'Panel must be able to parse the enabled list'
 
  # Validate the real default strategy and bundled hostlist with target nfqws.
  for name in ('zapret-hosts-user.txt','zapret-hosts-user-exclude.txt'):
