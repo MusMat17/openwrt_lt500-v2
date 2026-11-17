@@ -6,7 +6,7 @@ const ast=s=>acorn.parse(s,{ecmaVersion:2022,ranges:true});
 function edit(s,es){es.sort((a,b)=>a[0]-b[0]||b[1]-a[1]);const keep=[];for(const e of es){const p=keep.at(-1);if(p&&e[0]>=p[0]&&e[1]<=p[1])continue;if(p&&e[0]<p[1])throw Error('Overlap');keep.push(e);}for(const[a,b,t]of keep.reverse())s=s.slice(0,a)+t+s.slice(b);return s;}
 function payload(path,fn){const m="cat > '"+path+"' << 'ZM_INSTALLER_EOF'\n",a=source.indexOf(m);if(a<0)throw Error(path);const b=a+m.length,e=source.indexOf('\nZM_INSTALLER_EOF',b),old=source.slice(b,e),fresh=fn(old);source=source.slice(0,b)+fresh+source.slice(e);console.log(path,Buffer.byteLength(old),'->',Buffer.byteLength(fresh));}
 payload('/www/zm/app.js',s=>{
- const old=s,removed=new Set(),a=s.indexOf('var mqDark = '),b=s.indexOf('var ROUTES = ',a),c=s.indexOf('var LOOK_PV = ',b),d=s.indexOf('var NAV_LOCK = ',c);
+ const old=s,removed=new Set(),a=s.indexOf('var mqDark = '),b=s.indexOf('var ROUTES = ',a),c=s.indexOf('var LOOK_PV = ',b),d=s.indexOf('var ROUTE_BY_ID = ',c);
  if([a,b,c,d].some(x=>x<0))throw Error('Appearance boundaries');
  for(const n of ast(s).body[0].expression.callee.body.body)if((n.start>=a&&n.end<=b)||(n.start>=c&&n.end<=d)){if(n.type==='FunctionDeclaration')removed.add(n.id.name);if(n.type==='VariableDeclaration')for(const x of n.declarations)if(x.id.type==='Identifier')removed.add(x.id.name);}
  s=s.slice(0,c)+s.slice(d);s=s.slice(0,a)+s.slice(b);
