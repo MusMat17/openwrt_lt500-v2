@@ -35,6 +35,15 @@ with tempfile.TemporaryDirectory() as td:
  assert '--hostlist=/opt/zapret/ipset/zapret-hosts-rkn.txt' in opts
  assert '--hostlist=/opt/zapret/ipset/zapret-hosts-google.txt' in opts
  assert 'host=rzd.ru' in opts and '<HOSTLIST' not in opts
+
+ # Validate the real default strategy and bundled hostlist with target nfqws.
+ for name in ('zapret-hosts-user.txt','zapret-hosts-user-exclude.txt'):
+  p=zp/'ipset'/name;p.parent.mkdir(parents=True,exist_ok=True);p.touch()
+ args=shlex.split(opts)
+ args=[a.replace('/opt/zapret/',str(root/'opt/zapret')+'/') for a in args]
+ for name in ('zapret-hosts-user.txt','zapret-hosts-user-exclude.txt'):
+  args=[a.replace(str(root/'opt/zapret/ipset'/name),str(zp/'ipset'/name)) for a in args]
+ checked('qemu-mipsel-static','-cpu','24Kc','-L',str(root),str(root/'opt/zapret/nfq/nfqws'),'--dry-run',*args)
  assert (fixture/'enabled').exists()
  cron=fixture/'etc/crontabs/root';assert cron.read_text().count('lt500-rkn-update')==2 # command and log filename
  # Runtime config is syntactically valid after actual upstream sync.
