@@ -1,0 +1,33 @@
+name: Audit RC6 startup, WARP and panel sources for RC7
+on:
+  push:
+    branches: [v2.0-zapret-rc7]
+    paths: ['.github/workflows/audit-lt500-rc7.yml', 'scripts/lt500/audit-rc7.py']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Extract pinned RC6 panel and source payloads
+        run: python3 scripts/lt500/audit-rc7.py
+      - name: Inspect actual boot enablement in the RC6 image
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y squashfs-tools
+          sudo unsquashfs -no-progress -o 2303512 -d tmp/rc7-audit/root tmp/rc7-audit/*sysupgrade.bin >/dev/null
+          python3 - <<'PY'
+          import pathlib
+          root=pathlib.Path('tmp/rc7-audit/root')
+          for p in sorted((root/'etc/rc.d').iterdir()):
+              if any(s in p.name for s in ('zapret','steer')): print('BOOTLINK',p.name,str(p.readlink()))
+          for name in ('etc/init.d/zapret','opt/zapret/config','etc/config/zapret'):
+              p=root/name
+              if p.is_file():print('@@BEGIN '+name+'\n'+p.read_text()+'\n@@END '+name)
+          PY
