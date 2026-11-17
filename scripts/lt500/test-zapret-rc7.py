@@ -61,9 +61,11 @@ with tempfile.TemporaryDirectory() as td:
  (fixture/'etc/lt500-bundle/rc7-zapret').unlink()
  custom='--filter-tcp=443 <HOSTLIST> --dpi-desync=fake --dpi-desync-repeats=3'
  uci('set','zapret.config.NFQWS_OPT='+custom);uci('set','zapret.config.WS_USER=customuser');uci('commit','zapret')
+ assert uci('get','zapret.config.NFQWS_OPT')==custom and uci('get','zapret.config.WS_USER')=='customuser'
+ print('Custom strategy before migration:',(cfg/'zapret').read_text(),flush=True)
  checked('sh',str(hp))
  opts=uci('get','zapret.config.NFQWS_OPT')
- assert '--dpi-desync-repeats=3' in opts and uci('get','zapret.config.WS_USER')=='customuser'
+ assert '--dpi-desync-repeats=3' in opts and uci('get','zapret.config.WS_USER')=='customuser', (opts,uci('get','zapret.config.WS_USER'),(cfg/'zapret').read_text())
  assert cron.read_text().splitlines().__len__()==1
  # A strategy without generic hostlists is left byte-for-byte intact.
  (fixture/'etc/lt500-bundle/rc7-zapret').unlink()
