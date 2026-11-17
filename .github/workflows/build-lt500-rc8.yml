@@ -1,0 +1,51 @@
+name: LT500 RC8 - fixed panel preinstalled in SquashFS
+on:
+  push:
+    branches: [v2.0-zapret-rc8]
+    paths:
+      - '.github/workflows/build-lt500-rc8.yml'
+      - 'scripts/lt500/*rc8*'
+      - 'package/zapret-manager-lt500/files/lt500-panel-rom-ready'
+      - 'docs/LT500v2-RC8-INSTALL-RU.md'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: lt500-rc8
+  cancel-in-progress: true
+jobs:
+  bundle:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install image and target execution tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y squashfs-tools qemu-user-static busybox-static gcc
+          mkdir -p tmp/rc8
+          git clone https://github.com/openwrt/fwtool.git tmp/rc8/fwtool-source
+          git -C tmp/rc8/fwtool-source checkout 8f7fe925ca205c8e8e2d0d1b16218c1e148d5173
+          gcc -O2 -o tmp/rc8/fwtool tmp/rc8/fwtool-source/fwtool.c
+          gcc -O2 -o tmp/rc8/padjffs2 tools/padjffs2/src/padjffs2.c
+      - name: Build RC8 with ready ROM panel and unchanged RC7 kernel
+        run: sudo -E python3 scripts/lt500/repack-rc8.py
+      - name: Verify ROM first boot under BusyBox ash
+        run: sudo -E env LT500_TEST_SHELL='busybox sh' python3 scripts/lt500/test-panel-rom-rc8.py tmp/rc8/roundtrip
+      - name: Verify actual dashboard and Steer views
+        run: |
+          npm install --prefix /tmp/rc8-js --ignore-scripts --no-audit --no-fund acorn@8.15.0 eslint-scope@8.4.0 jsdom@26.1.0
+          NODE_PATH=/tmp/rc8-js/node_modules node scripts/lt500/check-panel-lite-rc7.cjs tmp/rc8/installer-fixed.sh tmp/rc8/installer-old.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cudy-lt500v2-openwrt-23.05.5-rc8
+          path: bin/targets/ramips/mt76x8/release/*
+          if-no-files-found: error
+          retention-days: 30
+      - name: Publish checked RC8 and retain earlier releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/lt500/publish-rc8.py

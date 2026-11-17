@@ -1,0 +1,83 @@
+#!/bin/sh
+# RC8 keeps the complete dashboard in SquashFS. Boot never runs its installer.
+set -eu
+umask 022
+ROM=/rom
+STATE=/etc/lt500-panel
+PANEL=/opt/zapret-manager-luci
+LOCK=/tmp/lt500-panel-apply.lock
+MANIFEST="$ROM/usr/share/lt500/panel-rom.files"
+INSTALLER=/usr/libexec/zapret-manager-installer
+fail() { echo "$*" >&2; exit 1; }
+[ "$(cat /tmp/sysinfo/board_name)" = cudy,lt500-v2 ] || fail 'Incorrect hardware target'
+EXPECTED="$(cat "$ROM/usr/share/lt500/panel-installer.sha256")"
+[ "$(sha256sum "$INSTALLER" | awk '{print $1}')" = "$EXPECTED" ] || fail 'A separate panel update is installed; use its compatible updater'
+mkdir "$LOCK" 2>/dev/null || fail 'Panel update is already running'
+trap 'rm -rf "$LOCK"' EXIT
+RESTORED=0
+while read -r digest mode name; do
+	case "$name" in opt/zapret-manager-luci/*|www/*|usr/libexec/rpcd/zapret-manager|usr/share/luci/*|usr/share/rpcd/*|usr/share/zm-redbtn/*|usr/bin/zms|usr/bin/zmw) ;; *) fail 'Invalid ROM manifest path' ;; esac
+	case "$name" in *..*) fail 'Invalid ROM manifest path' ;; esac
+	HAVE="$(sha256sum "/$name" 2>/dev/null | awk '{print $1}')"
+	if [ "$HAVE" = "$digest" ]; then
+		[ "$mode" != 755 ] || [ -x "/$name" ] || chmod 755 "/$name"
+		continue
+	fi
+	[ "$(sha256sum "$ROM/$name" | awk '{print $1}')" = "$digest" ] || fail "Invalid ROM payload: $name"
+	mkdir -p "/$(dirname "$name")"
+	cp "$ROM/$name" "/$name.rom-new"
+	chmod "$mode" "/$name.rom-new"
+	mv -f "/$name.rom-new" "/$name"
+	RESTORED=$((RESTORED + 1))
+done < "$MANIFEST"
+mkdir -p "$STATE" "$PANEL/state" /etc/crontabs
+chmod 700 "$STATE"
+if [ ! -f "$STATE/rom-rc8-configured" ]; then
+	PORT=7788
+	if [ -s "$PANEL/state/webui" ]; then
+		SAVED="$(sed -n 's/^port=\([0-9][0-9]*\)$/\1/p' "$PANEL/state/webui" | head -n1)"
+		if [ -n "$SAVED" ] && [ "${#SAVED}" -le 5 ] && [ "$SAVED" -ge 1 ] && [ "$SAVED" -le 65535 ]; then PORT="$SAVED"; fi
+	fi
+	if grep -qx 'on=0' "$PANEL/state/webui" 2>/dev/null; then
+		cp "$ROM/www/zm-webui.html" "$PANEL/state/webui.html"
+		rm -f /www/zm-webui.html
+		if uci -q get uhttpd.zmweb >/dev/null; then uci -q delete uhttpd.zmweb; uci commit uhttpd; fi
+	elif ! uci -q get uhttpd.zmweb >/dev/null; then
+		uci set uhttpd.zmweb=uhttpd
+		uci add_list "uhttpd.zmweb.listen_http=0.0.0.0:$PORT"
+		uci add_list "uhttpd.zmweb.listen_http=[::]:$PORT"
+		uci set uhttpd.zmweb.home=/www
+		uci set uhttpd.zmweb.index_page=zm-webui.html
+		uci set uhttpd.zmweb.ubus_prefix=/ubus
+		uci set uhttpd.zmweb.no_dirlists=1
+		uci set uhttpd.zmweb.rfc1918_filter=1
+		uci set uhttpd.zmweb.max_requests=12
+		uci set uhttpd.zmweb.max_connections=100
+		uci set uhttpd.zmweb.script_timeout=120
+		uci set uhttpd.zmweb.network_timeout=30
+		uci set uhttpd.zmweb.http_keepalive=20
+		uci set uhttpd.zmweb.tcp_keepalive=1
+		uci commit uhttpd
+	fi
+	[ -f /etc/crontabs/root ] || : > /etc/crontabs/root
+	if [ -s "$PANEL/state/cron.saved" ]; then
+		while IFS= read -r line; do
+			case "$line" in *'/opt/zapret-manager-luci/backend.sh '*) grep -qxF "$line" /etc/crontabs/root || echo "$line" >> /etc/crontabs/root ;; esac
+		done < "$PANEL/state/cron.saved"
+		rm -f "$PANEL/state/cron.saved"
+	fi
+	if [ ! -f "$PANEL/state/watch.off" ]; then
+		WATCH='*/2 * * * * /opt/zapret-manager-luci/backend.sh zm_watch >/dev/null 2>&1 # zm-rpcd-watch'
+		grep -q '# zm-rpcd-watch$' /etc/crontabs/root || echo "$WATCH" >> /etc/crontabs/root
+	else
+		sed -i '/# zm-rpcd-watch$/d' /etc/crontabs/root
+	fi
+	# These actions only synchronize local schedules; no list/package downloads.
+	ZM_NO_CRON_RESTART=1 "$PANEL/backend.sh" versions_cron_sync >/dev/null 2>&1 || true
+	ZM_NO_CRON_RESTART=1 "$PANEL/backend.sh" steer_action lists_cron x >/dev/null 2>&1 || true
+	/etc/init.d/cron enable >/dev/null 2>&1 || true
+	printf '%s\n' "$EXPECTED" > "$STATE/installed.sha256"
+	rm -f "$STATE/rollback.sha256"
+	touch "$STATE/rom-rc8-configured"
+fi
+echo "LT500 RC8 panel 5.064-3 ready from ROM; code files restored: $RESTORED; no panel installation into overlay"
