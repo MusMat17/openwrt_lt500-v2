@@ -20,7 +20,7 @@ with tempfile.TemporaryDirectory() as td:
   if p.exists():(zp/n).write_text(p.read_text() if n=='def-cfg.sh' else p.read_text().replace('/opt/zapret',str(zp)))
  (zp/'config').write_text((root/'opt/zapret/config').read_text())
  defaults=fixture/'defaults'
- defaults.write_text('#!/bin/bash\nset -e\ntouch "+shlex.quote(str(cfg/'zapret'))+"\nuci set zapret.config=main\nZAPRET_CFG_NAME=zapret\n. '+shlex.quote(str(zp/'def-cfg.sh'))+'\nset_cfg_reset_values\nset_cfg_nfqws_strat v6_by_StressOzz\n')
+ defaults.write_text('#!/bin/bash\nset -e\ntouch '+shlex.quote(str(cfg/'zapret'))+'\nuci set zapret.config=main\nZAPRET_CFG_NAME=zapret\n. '+shlex.quote(str(zp/'def-cfg.sh'))+'\nset_cfg_reset_values\nset_cfg_nfqws_strat v6_by_StressOzz\n')
  defaults.chmod(0o755)
  init=fixture/'zapret-init';init.write_text('#!/bin/sh\ncase "$1" in enable) touch "'+str(fixture/'enabled')+'";; enabled) test -f "'+str(fixture/'enabled')+'";; start) echo start >> "'+str(fixture/'starts')+'";; esac\n');init.chmod(0o755)
  # Rewrite absolute paths only in a fixture copy of the exact shipped helper.
