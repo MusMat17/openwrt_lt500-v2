@@ -1,0 +1,19 @@
+name: Promote tested LT500 RC8 to stable and remove previous RC releases
+on:
+  push:
+    branches: [v2.0-zapret-rc8]
+    paths:
+      - '.github/workflows/lt500-promote-tested.yml'
+      - 'scripts/lt500/promote-tested-release.py'
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Promote verified build first, then remove explicitly selected RC releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/lt500/promote-tested-release.py
