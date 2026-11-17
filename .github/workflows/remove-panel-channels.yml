@@ -1,0 +1,31 @@
+name: Remove LT500 panel update releases
+on:
+  push:
+    branches: [v2.0-zapret-rc8]
+    paths: ['.github/workflows/remove-panel-channels.yml']
+permissions:
+  contents: write
+jobs:
+  cleanup:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Remove only the explicitly requested panel update releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json,subprocess
+          repo='MusMat17/openwrt_lt500-v2'
+          def gh(*a):return subprocess.check_output(['gh',*a],text=True)
+          tags={'lt500-panel-lite','lt500-panel-steer213-noradio','lt500-panel-steer205-v4','lt500-panel-steer205','lt500-panel-stable'}
+          before=json.loads(gh('api','repos/'+repo+'/releases?per_page=100'))
+          keep={r['id'] for r in before if r['tag_name'] not in tags}
+          for r in before:
+              if r['tag_name'] in tags:
+                  gh('release','delete',r['tag_name'],'--repo',repo,'--yes')
+                  print('Deleted '+r['tag_name'],flush=True)
+          after=json.loads(gh('api','repos/'+repo+'/releases?per_page=100'))
+          assert not any(r['tag_name'] in tags for r in after)
+          assert keep=={r['id'] for r in after}
+          print('All panel update releases removed; firmware releases unchanged')
+          PY
