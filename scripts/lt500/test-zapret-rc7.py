@@ -12,7 +12,7 @@ with tempfile.TemporaryDirectory() as td:
  if not uci_binary.exists():uci_binary=root/'bin/uci'
  assert uci_binary.exists()
  wrapper=bindir/'uci'
- wrapper.write_text('#!/bin/sh\nexec '+shlex.join(['qemu-mipsel-static','-cpu','24Kc','-L',str(root),str(uci_binary),'-c',str(cfg),'-P',str(delta)])+' "$@"\n');wrapper.chmod(0o755)
+ wrapper.write_text('#!/bin/sh\nexec '+shlex.join(['qemu-mipsel-static','-cpu','24Kc','-L',str(root),str(uci_binary),'-c',str(cfg),'-t',str(delta)])+' "$@"\n');wrapper.chmod(0o755)
  def uci(*args):return subprocess.check_output(['uci',*args],text=True).strip()
  zp=fixture/'opt/zapret';zp.mkdir(parents=True)
  for n in ('comfunc.sh','def-cfg.sh','sync_config.sh','config.default'):
@@ -67,7 +67,6 @@ with tempfile.TemporaryDirectory() as td:
  custom='--filter-tcp=443 <HOSTLIST> --dpi-desync=fake --dpi-desync-repeats=3'
  uci('set','zapret.config.NFQWS_OPT='+custom);uci('set','zapret.config.WS_USER=customuser');uci('commit','zapret')
  assert uci('get','zapret.config.NFQWS_OPT')==custom and uci('get','zapret.config.WS_USER')=='customuser'
- print('Custom strategy before migration:',(cfg/'zapret').read_text(),flush=True)
  checked('sh',str(hp))
  opts=uci('get','zapret.config.NFQWS_OPT')
  assert '--dpi-desync-repeats=3' in opts and uci('get','zapret.config.WS_USER')=='customuser', (opts,uci('get','zapret.config.WS_USER'),(cfg/'zapret').read_text())
