@@ -1,0 +1,14 @@
+#!/bin/sh /etc/rc.common
+START=98
+start() {
+ [ -f /tmp/lt500-zapret-start ] || return 0
+ rm -f /tmp/lt500-zapret-start
+ [ "$(uci -q get zapret.config.run_on_boot)" = 1 ] || return 0
+ /etc/init.d/zapret enabled || return 0
+ if /etc/init.d/zapret start >>/tmp/lt500-zapret-boot.log 2>&1; then
+  logger -t lt500-zapret 'First-boot Zapret start requested'
+ else
+  logger -t lt500-zapret 'Zapret failed to start; see /tmp/lt500-zapret-boot.log'
+  return 1
+ fi
+}

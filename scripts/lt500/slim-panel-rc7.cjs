@@ -17,6 +17,7 @@ payload('/www/zm/app.js',s=>{
  let es=[];walk(ast(s),n=>{if(n.type==='FunctionDeclaration'&&n.id.name==='matrixRain'){removed.add('matrixRain');es.push([n.start,n.end,'']);}});s=edit(s,es);
  function mentions(n){let yes=false;walk(n,x=>{if(x.type==='Identifier'&&removed.has(x.name))yes=true;});return yes;}
  es=[];walk(ast(s),n=>{if(n.type==='IfStatement'&&mentions(n.test))es.push([n.start,n.end,'']);if(n.type==='ExpressionStatement'){const e=n.expression;if(e.type==='CallExpression'&&e.callee.type==='Identifier'&&removed.has(e.callee.name))es.push([n.start,n.end,'']);if(e.type==='AssignmentExpression'&&e.left.type==='Identifier'&&removed.has(e.left.name))es.push([n.start,n.end,'']);}});s=edit(s,es);
+ s=s.replace("el.classList.add('zmw-leave');",'').replace('setTimeout(function () { el.remove(); }, 380);','el.remove();');
  const p=s.indexOf('if (!sid) { showLogin(); return; }'),st=s.indexOf('\t\treturn Promise.all([',p),en=s.indexOf('\n\t}).catch(function (e)',st);if(st<0||en<0)throw Error('Theme ACL block');s=s.slice(0,st)+'\t\tstartApp();'+s.slice(en);
  s=once(s,"root = document.getElementById('zmw-root');","root = document.getElementById('zmw-root');\n\tdocument.documentElement.setAttribute('data-theme', 'light');").replace(/behavior: 'smooth'/g,"behavior: 'auto'");
  function globals(t){return new Set(scope.analyze(ast(t),{ecmaVersion:2022}).globalScope.through.map(r=>r.identifier.name));}
@@ -31,6 +32,9 @@ for(const path of ['/www/zm/app.css','/www/luci-static/resources/view/zapret-man
  let changed=true;while(changed){changed=false;tree.walkAtRules(a=>{if(a.nodes&&!a.nodes.length){a.remove();changed=true;}});tree.walkRules(r=>{if(!r.nodes.length){r.remove();changed=true;}});}tree.walkComments(c=>c.remove());return tree.toString();
 });
 payload('/www/zm-webui.html',html=>{const dom=new JSDOM(html),d=dom.window.document;d.querySelectorAll('script:not([src]),style,link[href*="fonts.googleapis"],link[href*="fonts.gstatic"]').forEach(x=>x.remove());d.documentElement.setAttribute('data-theme','light');const s=dom.serialize();dom.window.close();return s;});
+payload('/www/luci-static/resources/zapret-manager/common.js',s=>s.replace(/function detectMissingThemeVar\(\) \{[\s\S]*?\n\}\n/,'').replace(/^[^\n]*detectMissingThemeVar\(\);[^\n]*\n/gm,''));
 const ts=source.indexOf('ui_theme_set() {\n'),te=source.indexOf('UI_NAV_FILE=',ts);if(ts<0||te<0)throw Error('Theme backend markers');source=source.slice(0,ts)+source.slice(te);source=source.split('\n').filter(x=>!/\bui_(?:theme|look)_set\b/.test(x)).join('\n');
 const old=source.match(/^_st_warp_on\(\) \{[\s\S]*?^\}/m);if(!old)throw Error('WARP detection marker');source=once(source,old[0],fs.readFileSync(__dirname+'/rc7-warp-on.sh','utf8').trim());
+source=once(source,'\t_st_warp_up || return 1\n\t[ "$(cat "$ST_EXIT"','\t_st_warp_up || return 1\n\t_st_warp_on || { echo "ОШИБКА: WARP настроен, но состояние интерфейса не сохранено"; return 1; }\n\t[ "$(cat "$ST_EXIT"');
+source=once(source,'\t\t\t\t_rb_warn "Туннеля нет — подключите WARP или подписку VPN, и выбранные сервисы пойдут через него"\n\t\t\t\treturn 0','\t\t\t\t_rb_warn "Туннеля нет — подключите WARP или подписку VPN, и выбранные сервисы пойдут через него"\n\t\t\t\t[ "$1" = tunnel_ready ] && return 1\n\t\t\t\treturn 0');
 fs.writeFileSync(process.argv[3],source);console.log('Total panel bytes removed:',Buffer.byteLength(original)-Buffer.byteLength(source));

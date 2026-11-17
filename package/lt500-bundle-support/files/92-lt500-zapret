@@ -1,0 +1,2 @@
+#!/bin/sh
+/usr/libexec/lt500-zapret-configure

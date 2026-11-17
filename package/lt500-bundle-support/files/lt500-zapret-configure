@@ -1,0 +1,33 @@
+#!/bin/sh
+# One-time RC7 migration. No network requests in the boot path.
+set -eu
+STATE=/etc/lt500-bundle
+[ ! -f "$STATE/rc7-zapret" ] || exit 0
+[ -s /etc/config/zapret ] || /opt/zapret/uci-def-cfg.sh
+uci -q get zapret.config >/dev/null
+OLD="$(uci -q get zapret.config.NFQWS_OPT || true)"
+# Expand only the strategy's existing generic hostlist placeholders.
+# YouTube/domain-specific profiles and all desync parameters are retained.
+NEW="$(printf '%s\n' "$OLD" | awk '
+{
+ gsub(/<HOSTLIST(_NOAUTO)?>/, "\n--hostlist=/opt/zapret/ipset/zapret-hosts-user.txt\n--hostlist=/opt/zapret/ipset/zapret-hosts-rkn.txt\n--hostlist-exclude=/opt/zapret/ipset/zapret-hosts-user-exclude.txt\n")
+ print
+}')"
+if [ "$NEW" != "$OLD" ]; then
+ uci set "zapret.config.NFQWS_OPT=$NEW"
+fi
+uci set zapret.config.run_on_boot=1
+uci commit zapret
+/opt/zapret/sync_config.sh
+/etc/init.d/zapret enable
+mkdir -p "$STATE" /opt/zapret-manager-luci/state
+if printf '%s\n' "$NEW" | grep -qxF -- '--hostlist=/opt/zapret/ipset/zapret-hosts-rkn.txt'; then
+ echo tachyon > /opt/zapret-manager-luci/state/zapret_rkn_src
+ touch /opt/zapret-manager-luci/state/zapret_rkn
+else
+ logger -t lt500-zapret 'Existing custom strategy retained; select Tachyon RKN in the panel for this strategy'
+fi
+# The normal rc.d glob can have been expanded before this first-boot enable.
+touch /tmp/lt500-zapret-start
+touch "$STATE/rc7-zapret"
+logger -t lt500-zapret 'RC7 configuration ready; Zapret enabled at boot'

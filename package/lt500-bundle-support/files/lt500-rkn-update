@@ -1,0 +1,29 @@
+#!/bin/sh
+# Atomic cached hostlist update; failures retain the working list.
+set -eu
+DST=/opt/zapret/ipset/zapret-hosts-rkn.txt
+[ "$(cat /opt/zapret-manager-luci/state/zapret_rkn_src 2>/dev/null)" = tachyon ] || exit 0
+[ -f /opt/zapret-manager-luci/state/zapret_rkn ] || exit 0
+LOCK=/tmp/lt500-rkn-update.lock
+mkdir "$LOCK" 2>/dev/null || exit 0
+trap 'rm -rf "$LOCK"' EXIT
+RAW=https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/domains/ru_blocked.lst
+CDN=https://cdn.jsdelivr.net/gh/Dushnilin/tachyon-lists@main/release/domains/ru_blocked.lst
+for url in "$RAW" "$CDN"; do
+ rm -f "$LOCK/part"
+ if curl -fLsS --connect-timeout 8 --max-time 90 --max-filesize 5000000 "$url" -o "$LOCK/part"; then mv "$LOCK/part" "$LOCK/raw"; break; fi
+done
+[ -s "$LOCK/raw" ] || { logger -t lt500-rkn 'Download failed; retained cached list'; exit 1; }
+# The same validator is used for the bundled list and downloaded updates.
+awk -f /usr/share/lt500/rkn-filter.awk /opt/zapret/ipset/zapret-hosts-google.txt "$LOCK/raw" > "$LOCK/list" || exit 1
+COUNT="$(wc -l < "$LOCK/list")"
+[ "$COUNT" -ge 100 ] && [ "$COUNT" -le 200000 ] || { logger -t lt500-rkn 'Invalid list size; retained cached list'; exit 1; }
+cmp -s "$LOCK/list" "$DST" && exit 0
+cp "$LOCK/list" "$DST.new"
+chmod 644 "$DST.new"
+mv -f "$DST.new" "$DST"
+# Only signal Zapret nfqws, not another application with the same executable name.
+for pid in $(pidof nfqws 2>/dev/null || true); do
+ [ "$(readlink -f "/proc/$pid/exe")" = /opt/zapret/nfq/nfqws ] && kill -HUP "$pid" || true
+done
+logger -t lt500-rkn "Tachyon hostlist updated ($COUNT domains)"

@@ -23,6 +23,9 @@ jobs:
           NODE_PATH=/tmp/rc7-js/node_modules node scripts/lt500/slim-panel-rc7.cjs tmp/rc7-audit/installer.sh tmp/rc7-audit/installer-lite.sh
           sh -n tmp/rc7-audit/installer-lite.sh
           python3 scripts/lt500/check-panel-installer.py tmp/rc7-audit/installer-lite.sh
+          python3 scripts/lt500/check-panel-payloads.py tmp/rc7-audit/installer-lite.sh
+          python3 scripts/lt500/test-warp-rc7.py tmp/rc7-audit/installer-lite.sh
+          NODE_PATH=/tmp/rc7-js/node_modules node scripts/lt500/check-panel-lite-rc7.cjs tmp/rc7-audit/installer-lite.sh tmp/rc7-audit/installer.sh
       - name: Preserve prepared panel for firmware assembly
         uses: actions/upload-artifact@v4
         with:
