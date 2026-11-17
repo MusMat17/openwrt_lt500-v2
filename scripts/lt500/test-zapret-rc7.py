@@ -43,7 +43,7 @@ with tempfile.TemporaryDirectory() as td:
  args=[a.replace('/opt/zapret/',str(root/'opt/zapret')+'/') for a in args]
  for name in ('zapret-hosts-user.txt','zapret-hosts-user-exclude.txt'):
   args=[a.replace(str(root/'opt/zapret/ipset'/name),str(zp/'ipset'/name)) for a in args]
- checked('qemu-mipsel-static','-cpu','24Kc','-L',str(root),str(root/'opt/zapret/nfq/nfqws'),'--dry-run',*args)
+ checked('qemu-mipsel-static','-cpu','24Kc','-L',str(root),str(root/'opt/zapret/nfq/nfqws'),'--dry-run','--qnum=200',*args)
  assert (fixture/'enabled').exists()
  cron=fixture/'etc/crontabs/root';assert cron.read_text().count('lt500-rkn-update')==2 # command and log filename
  # Runtime config is syntactically valid after actual upstream sync.
