@@ -1,0 +1,28 @@
+name: Publish verified LT500 RC7 and Lite panel channel
+on:
+  push:
+    branches: [v2.0-zapret-rc7]
+    paths:
+      - '.github/workflows/publish-lt500-lite.yml'
+      - 'scripts/lt500/publish-lite-bundle.py'
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: publish-lt500-rc7
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RC7_BUILD_RUN: '44006894417'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download the verified build, without rebuilding
+        run: |
+          mkdir -p bin/targets/ramips/mt76x8/release
+          gh run download "$RC7_BUILD_RUN" --repo MusMat17/openwrt_lt500-v2 --name cudy-lt500v2-openwrt-23.05.5-rc7 --dir bin/targets/ramips/mt76x8/release
+      - name: Publish RC7 and compatible panel; verify all remote bytes
+        run: python3 scripts/lt500/publish-lite-bundle.py
