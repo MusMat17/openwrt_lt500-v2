@@ -29,6 +29,7 @@ def fingerprint(folder):
   result[str(p.relative_to(folder))]=(st.st_mode,st.st_uid,st.st_gid,body)
  return result
 before=fingerprint(root)
+status_before=(root/'usr/lib/opkg/status').read_text()
 panel=out/'zapret-manager-lt500_5.064-3_mipsel_24kc.ipk'
 urllib.request.urlretrieve('https://github.com/MusMat17/openwrt_lt500-v2/releases/download/lt500-rc7-warp-state-fix/'+panel.name,panel)
 assert sha(panel)=='6d61de8906da7fc5018303563f956a1b4beb0796f20ec712775ecaf8dcc5c724'
@@ -78,7 +79,7 @@ allowed.update(['www/zm-webui.html','etc/lt500-allinone','usr/lib/opkg/status'])
 unexpected=[p for p in before.keys()|after.keys() if before.get(p)!=after.get(p) and p not in allowed and not p.startswith('usr/lib/opkg/info/zapret-manager-lt500.')]
 assert not unexpected,unexpected
 def versions(s):return {m[1]:m[2] for m in re.finditer(r'^Package: (.+)\nVersion: (.+)$',s,re.M)}
-prior=dict(line.split(' - ',1) for line in (original/'openwrt-ramips-mt76x8-cudy_lt500-v2.manifest').read_text().splitlines())
+prior=versions(status_before)
 current=versions(status)
 assert prior.keys()==current.keys()
 assert {n for n in prior if prior[n]!=current[n]}=={'zapret-manager-lt500'}
