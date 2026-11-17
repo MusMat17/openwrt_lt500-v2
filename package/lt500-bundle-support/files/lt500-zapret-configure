@@ -24,6 +24,9 @@ mkdir -p "$STATE" /opt/zapret-manager-luci/state
 if printf '%s\n' "$NEW" | grep -qxF -- '--hostlist=/opt/zapret/ipset/zapret-hosts-rkn.txt'; then
  echo tachyon > /opt/zapret-manager-luci/state/zapret_rkn_src
  touch /opt/zapret-manager-luci/state/zapret_rkn
+ mkdir -p /etc/crontabs
+ JOB='17 5 * * * /usr/libexec/lt500-rkn-update >/tmp/lt500-rkn-update.log 2>&1'
+ grep -qxF "$JOB" /etc/crontabs/root 2>/dev/null || echo "$JOB" >> /etc/crontabs/root
 else
  logger -t lt500-zapret 'Existing custom strategy retained; select Tachyon RKN in the panel for this strategy'
 fi

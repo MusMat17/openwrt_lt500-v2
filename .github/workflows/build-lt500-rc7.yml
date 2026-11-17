@@ -1,0 +1,54 @@
+name: LT500 RC7 - Lite panel, persistent WARP and offline Zapret startup
+on:
+  push:
+    branches: [v2.0-zapret-rc7]
+    paths:
+      - '.github/workflows/build-lt500-rc7.yml'
+      - 'scripts/lt500/repack-rc7.py'
+      - 'scripts/lt500/test-zapret-rc7.py'
+      - 'package/lt500-bundle-support/**'
+      - 'docs/LT500v2-RC7-INSTALL-RU.md'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: lt500-rc7
+  cancel-in-progress: true
+jobs:
+  bundle:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Prepare and validate the actual lightweight panel
+        run: |
+          python3 scripts/lt500/audit-rc7.py >/tmp/rc7-source.log
+          npm install --prefix /tmp/rc7-js --ignore-scripts --no-audit --no-fund acorn@8.15.0 eslint-scope@8.4.0 postcss@8.5.6 postcss-selector-parser@7.1.0 jsdom@26.1.0
+          NODE_PATH=/tmp/rc7-js/node_modules node scripts/lt500/slim-panel-rc7.cjs tmp/rc7-audit/installer.sh tmp/rc7-audit/installer-lite.sh
+          python3 scripts/lt500/check-panel-installer.py tmp/rc7-audit/installer-lite.sh
+          python3 scripts/lt500/check-panel-payloads.py tmp/rc7-audit/installer-lite.sh
+          python3 scripts/lt500/test-warp-rc7.py tmp/rc7-audit/installer-lite.sh
+          NODE_PATH=/tmp/rc7-js/node_modules node scripts/lt500/check-panel-lite-rc7.cjs tmp/rc7-audit/installer-lite.sh tmp/rc7-audit/installer.sh
+      - name: Install host image tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y squashfs-tools qemu-user-static gcc
+          mkdir -p tmp/rc7
+          git clone https://github.com/openwrt/fwtool.git tmp/rc7/fwtool-source
+          git -C tmp/rc7/fwtool-source checkout 8f7fe925ca205c8e8e2d0d1b16218c1e148d5173
+          gcc -O2 -o tmp/rc7/fwtool tmp/rc7/fwtool-source/fwtool.c
+          gcc -O2 -o tmp/rc7/padjffs2 tools/padjffs2/src/padjffs2.c
+      - name: Build and verify RC7 with the unchanged RC6 kernel and Steer
+        run: |
+          sudo -E python3 scripts/lt500/repack-rc7.py
+          sudo chown -R "$(id -u):$(id -g)" bin
+      - name: Preserve verified RC7 files
+        uses: actions/upload-artifact@v4
+        with:
+          name: cudy-lt500v2-openwrt-23.05.5-rc7
+          if-no-files-found: error
+          retention-days: 30
+          path: bin/targets/ramips/mt76x8/release/*
