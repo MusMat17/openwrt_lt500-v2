@@ -1,0 +1,64 @@
+#!/bin/sh
+# RC7-only delta installation: replace three code files, retain all settings.
+set -eu
+umask 077
+INSTALLER=/usr/libexec/zapret-manager-installer
+PANEL=/opt/zapret-manager-luci
+STATE=/etc/lt500-panel
+BACKUP=/root/lt500-warp-state-backup.tar.gz
+LOCK=/tmp/lt500-panel-apply.lock
+fail() { echo "$*" >&2; exit 1; }
+[ -f /etc/lt500-allinone ] || fail 'LT500 bundle required'
+[ "$(cat /tmp/sysinfo/board_name)" = cudy,lt500-v2 ] || fail 'Incorrect hardware target'
+if ! grep -q 'состояние интерфейса не сохранено' "$PANEL/mod/steer1.sh" 2>/dev/null ||
+   ! grep -q 'lt500-panel-update' "$PANEL/backend.sh" 2>/dev/null; then
+	exec /usr/libexec/lt500-panel-apply
+fi
+mkdir "$LOCK" 2>/dev/null || fail 'Panel update is already running'
+trap 'rm -rf "$LOCK"' EXIT
+EXPECTED="$(sha256sum "$INSTALLER" | awk '{print $1}')"
+if [ "$(cat "$STATE/installed.sha256" 2>/dev/null || true)" = "$EXPECTED" ] &&
+   grep -q '^_st_warp_recover_if() {' "$PANEL/backend.sh" &&
+   grep -q '_st_warp_recover_all' "$PANEL/mod/steer1.sh" &&
+   grep -q '_st_warp_recover_all' "$PANEL/mod/steer2.sh"; then
+	echo 'LT500 WARP state fix is already installed'
+	exit 0
+fi
+for pidfile in /tmp/zapret-manager-luci/*.pid; do
+	[ -f "$pidfile" ] || continue
+	case "${pidfile##*/}" in versions.pid|sysinfo.pid|*_download.pid|redbtn_deep.pid) continue ;; esac
+	if kill -0 "$(cat "$pidfile")" 2>/dev/null && ! grep -q '^__DONE__' "${pidfile%.pid}.log" 2>/dev/null; then
+		fail 'Wait until the running panel operation finishes'
+	fi
+done
+FREE="$(df -k /overlay | awk 'NR==2 {print $4}')"
+[ "${FREE:-0}" -ge 768 ] || fail 'Need at least 768 KiB free in /overlay for the small WARP update'
+sh -n "$INSTALLER" || fail 'Invalid installer'
+mkdir -p "$LOCK/new" "$STATE"
+for name in backend.sh mod/steer1.sh mod/steer2.sh; do
+	mkdir -p "$LOCK/new/$(dirname "$name")"
+	awk -v target="$name" '
+		!inside && index($0, "<< '\''ZM_INSTALLER_EOF'\''") && index($0, "$_zmi_st/" target "\"") { inside=1; next }
+		inside && $0=="ZM_INSTALLER_EOF" { exit }
+		inside { gsub(/@ZM_VERSION@/, "5.064"); print }
+	' "$INSTALLER" > "$LOCK/new/$name"
+	[ -s "$LOCK/new/$name" ] && sh -n "$LOCK/new/$name" || fail 'Could not extract the new backend'
+	chmod 755 "$LOCK/new/$name"
+done
+grep -q '^_st_warp_recover_if() {' "$LOCK/new/backend.sh" || fail 'Recovery helper missing'
+grep -q '_st_warp_recover_all' "$LOCK/new/mod/steer1.sh" || fail 'WARP lifecycle hook missing'
+grep -q '_st_warp_recover_all' "$LOCK/new/mod/steer2.sh" || fail 'Removal hook missing'
+tar -czf "$BACKUP.new" -C "$PANEL" backend.sh mod/steer1.sh mod/steer2.sh
+mv "$BACKUP.new" "$BACKUP"
+rollback() { tar -xzf "$BACKUP" -C "$PANEL"; }
+for name in backend.sh mod/steer1.sh mod/steer2.sh; do
+	if ! cp "$LOCK/new/$name" "$PANEL/$name.new" || ! chmod 755 "$PANEL/$name.new" || ! mv "$PANEL/$name.new" "$PANEL/$name"; then
+		rollback || true
+		rm -f "$PANEL/backend.sh.new" "$PANEL/mod/steer1.sh.new" "$PANEL/mod/steer2.sh.new"
+		fail 'WARP update failed; previous backend restored'
+	fi
+done
+sha256sum "$INSTALLER" | awk '{print $1}' > "$STATE/installed.sha256.new"
+mv "$STATE/installed.sha256.new" "$STATE/installed.sha256"
+rm -f "$STATE/rollback.sha256"
+echo 'LT500 WARP state fix installed. Settings and active interfaces retained. Apply Steer settings in the panel.'

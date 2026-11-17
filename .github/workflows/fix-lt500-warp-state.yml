@@ -1,0 +1,60 @@
+name: LT500 RC7 WARP state recovery - panel 5.064-3
+on:
+  push:
+    branches: [fix/lt500-rc7-warp-state]
+    paths:
+      - '.github/workflows/fix-lt500-warp-state.yml'
+      - 'scripts/lt500/*warp*'
+      - 'package/zapret-manager-lt500/files/lt500-warp-state-apply'
+      - 'docs/LT500v2-WARP-state-fix-RU.md'
+permissions:
+  contents: write
+concurrency:
+  group: lt500-warp-state-fix
+  cancel-in-progress: true
+jobs:
+  panel:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build from the immutable RC7 panel package
+        run: |
+          mkdir -p tmp/warp-state-fix
+          curl -fLsS --retry 3 --connect-timeout 10 --max-time 120 https://github.com/MusMat17/openwrt_lt500-v2/releases/download/v2.0-zapret-rc7/zapret-manager-lt500_5.064-2_mipsel_24kc.ipk -o tmp/warp-state-fix/original.ipk
+          python3 scripts/lt500/make-warp-state-fix.py tmp/warp-state-fix/original.ipk tmp/warp-state-fix
+          python3 - <<'PY'
+          import io,pathlib,tarfile
+          p=pathlib.Path('tmp/warp-state-fix')
+          with tarfile.open(p/'original.ipk') as t:
+            m=next(m for m in t if m.name.endswith('data.tar.gz'))
+            with tarfile.open(fileobj=io.BytesIO(t.extractfile(m).read())) as d:
+              m=next(m for m in d if m.name.endswith('zapret-manager-installer'))
+              (p/'installer-original.sh').write_bytes(d.extractfile(m).read())
+          PY
+      - name: Reproduce the reported failure and verify actual panel lifecycle
+        run: |
+          python3 scripts/lt500/test-warp-recovery.py tmp/warp-state-fix/installer-original.sh tmp/warp-state-fix/installer-fixed.sh
+          python3 scripts/lt500/test-warp-delta-apply.py tmp/warp-state-fix/installer-original.sh tmp/warp-state-fix/installer-fixed.sh
+          python3 scripts/lt500/test-warp-rc7.py tmp/warp-state-fix/installer-fixed.sh
+          python3 scripts/lt500/check-panel-installer.py tmp/warp-state-fix/installer-fixed.sh
+          python3 scripts/lt500/check-panel-payloads.py tmp/warp-state-fix/installer-fixed.sh
+      - name: Verify BusyBox ash and the actual router package manager
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y busybox-static qemu-user-static squashfs-tools
+          LT500_TEST_SHELL='busybox sh' python3 scripts/lt500/test-warp-recovery.py tmp/warp-state-fix/installer-original.sh tmp/warp-state-fix/installer-fixed.sh
+          sudo -E python3 scripts/lt500/verify-warp-fix-package.py tmp/warp-state-fix/native-root tmp/warp-state-fix/zapret-manager-lt500_5.064-3_mipsel_24kc.ipk
+      - name: Publish checked fix and advance the compatible Lite panel channel
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/lt500/publish-warp-state-fix.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lt500-warp-state-fix-5.064-3
+          path: tmp/warp-state-fix/release/*
+          if-no-files-found: error
+          retention-days: 30
