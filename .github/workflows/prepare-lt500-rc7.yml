@@ -1,0 +1,31 @@
+name: Prepare and check lightweight LT500 RC7 panel
+on:
+  push:
+    branches: [v2.0-zapret-rc7]
+    paths: ['.github/workflows/prepare-lt500-rc7.yml', 'scripts/lt500/slim-panel-rc7.cjs', 'scripts/lt500/rc7-warp-on.sh']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  panel:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Extract verified RC6 panel
+        run: python3 scripts/lt500/audit-rc7.py >/tmp/rc7-source.log
+      - name: Remove themes and animations; repair WARP detection
+        run: |
+          npm install --prefix /tmp/rc7-js --ignore-scripts --no-audit --no-fund acorn@8.15.0 eslint-scope@8.4.0 postcss@8.5.6 postcss-selector-parser@7.1.0 jsdom@26.1.0
+          NODE_PATH=/tmp/rc7-js/node_modules node scripts/lt500/slim-panel-rc7.cjs tmp/rc7-audit/installer.sh tmp/rc7-audit/installer-lite.sh
+          sh -n tmp/rc7-audit/installer-lite.sh
+          python3 scripts/lt500/check-panel-installer.py tmp/rc7-audit/installer-lite.sh
+      - name: Preserve prepared panel for firmware assembly
+        uses: actions/upload-artifact@v4
+        with:
+          name: lt500-rc7-prepared-panel
+          path: tmp/rc7-audit/installer-lite.sh
+          retention-days: 14
