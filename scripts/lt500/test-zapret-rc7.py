@@ -40,9 +40,13 @@ with tempfile.TemporaryDirectory() as td:
  for name in ('zapret-hosts-user.txt','zapret-hosts-user-exclude.txt'):
   p=zp/'ipset'/name;p.parent.mkdir(parents=True,exist_ok=True);p.touch()
  args=shlex.split(opts)
- args=[a.replace('/opt/zapret/',str(root/'opt/zapret')+'/') for a in args]
- for name in ('zapret-hosts-user.txt','zapret-hosts-user-exclude.txt'):
-  args=[a.replace(str(root/'opt/zapret/ipset'/name),str(zp/'ipset'/name)) for a in args]
+ for arg in args:
+  value=arg.split('=',1)[1] if '=' in arg else ''
+  if value.startswith('/opt/zapret/'):
+   target=fixture/value.lstrip('/');target.parent.mkdir(parents=True,exist_ok=True)
+   source=root/value.lstrip('/')
+   if source.is_file():shutil.copyfile(source,target);target.chmod(0o644)
+ args=[a.replace('/opt/zapret/',str(zp)+'/') for a in args]
  checked('qemu-mipsel-static','-cpu','24Kc','-L',str(root),str(root/'opt/zapret/nfq/nfqws'),'--dry-run','--qnum=200',*args)
  assert (fixture/'enabled').exists()
  cron=fixture/'etc/crontabs/root';assert cron.read_text().count('lt500-rkn-update')==2 # command and log filename
