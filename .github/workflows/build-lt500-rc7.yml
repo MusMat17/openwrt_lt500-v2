@@ -4,8 +4,7 @@ on:
     branches: [v2.0-zapret-rc7]
     paths:
       - '.github/workflows/build-lt500-rc7.yml'
-      - 'scripts/lt500/repack-rc7.py'
-      - 'scripts/lt500/test-zapret-rc7.py'
+      - 'scripts/lt500/*rc7*'
       - 'package/lt500-bundle-support/**'
       - 'docs/LT500v2-RC7-INSTALL-RU.md'
   workflow_dispatch:
@@ -29,6 +28,7 @@ jobs:
           npm install --prefix /tmp/rc7-js --ignore-scripts --no-audit --no-fund acorn@8.15.0 eslint-scope@8.4.0 postcss@8.5.6 postcss-selector-parser@7.1.0 jsdom@26.1.0
           NODE_PATH=/tmp/rc7-js/node_modules node scripts/lt500/slim-panel-rc7.cjs tmp/rc7-audit/installer.sh tmp/rc7-audit/installer-lite.sh
           python3 scripts/lt500/check-panel-installer.py tmp/rc7-audit/installer-lite.sh
+          python3 scripts/lt500/test-panel-updates.py
           python3 scripts/lt500/check-panel-payloads.py tmp/rc7-audit/installer-lite.sh
           python3 scripts/lt500/test-warp-rc7.py tmp/rc7-audit/installer-lite.sh
           NODE_PATH=/tmp/rc7-js/node_modules node scripts/lt500/check-panel-lite-rc7.cjs tmp/rc7-audit/installer-lite.sh tmp/rc7-audit/installer.sh

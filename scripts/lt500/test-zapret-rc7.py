@@ -6,7 +6,7 @@ repo=pathlib.Path(__file__).resolve().parents[2]
 src=repo/'package/lt500-bundle-support/files'
 def checked(*args,**kw):return subprocess.run(args,check=True,**kw)
 with tempfile.TemporaryDirectory() as td:
- fixture=pathlib.Path(td);cfg=fixture/'etc/config';cfg.mkdir(parents=True);delta=fixture/'delta';delta.mkdir()
+ fixture=pathlib.Path(td);(fixture/'tmp').mkdir();cfg=fixture/'etc/config';cfg.mkdir(parents=True);delta=fixture/'delta';delta.mkdir()
  bindir=fixture/'bin';bindir.mkdir();os.environ['PATH']=str(bindir)+':'+os.environ['PATH']
  uci_binary=root/'sbin/uci'
  if not uci_binary.exists():uci_binary=root/'bin/uci'

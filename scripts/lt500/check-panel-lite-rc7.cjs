@@ -17,9 +17,11 @@ async function test(auth,route='dashboard'){
  if(auth&&!w.document.querySelector('.zmw-nav'))throw Error('Shell missing: '+w.document.body.textContent.slice(0,500));
  if(!auth&&!w.document.querySelector('input[type="password"]'))throw Error('Login missing');
  if(w.document.querySelector('[data-zm-radio],.zmw-radio,.zmw-nav-btn-radio')||calls.some(x=>/radio|hls/i.test(x)))throw Error('Radio resource requested');
+ if(auth && (!w.document.querySelector('.zmw-page') || w.document.querySelector('.zmw-page').textContent.trim().length<40))throw Error('Actual page missing: '+route);
  if(auth && /(?:не удалось|ReferenceError|TypeError)/i.test(w.document.querySelector('.zmw-page')?.textContent||''))throw Error(w.document.querySelector('.zmw-page').textContent);
  if(w.document.querySelector('[data-route="look"],.zmw-theme-toggle,canvas')||calls.some(x=>/fonts\.(?:googleapis|gstatic)/.test(x)))throw Error('Appearance requested');
  if(errors.length)throw errors[0];
+ if(auth)console.log('Actual view '+route+': '+w.document.querySelector('.zmw-page').textContent.trim().slice(0,160));
  console.log(auth?'Authenticated '+route+' page rendered without themes, animations or radio':'Login rendered without radio');dom.window.close();
 }
 (async()=>{await test(false);await test(true);await test(true,'steer');})().catch(e=>{console.error(e);process.exit(1)});
